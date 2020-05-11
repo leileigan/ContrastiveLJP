@@ -155,27 +155,10 @@ def get_result(target, preds, mode):
     sorted_target = sorted(Counter(target).items())
     sorted_preds = sorted(Counter(preds).items())
 
-    logging.info("ground: (0, {:d}), (1, {:d}), (2, {:d}) ".format(sorted_target[0][1], sorted_target[1][1],
+    print("ground: (0, {:d}), (1, {:d}), (2, {:d}) ".format(sorted_target[0][1], sorted_target[1][1],
                                                                    sorted_target[2][1]))
-    logging.info("ground: (0, {:d}), (1, {:d}), (2, {:d}) ".format(sorted_preds[0][1], sorted_preds[1][1],
+    print("predicts: (0, {:d}), (1, {:d}), (2, {:d}) ".format(sorted_preds[0][1], sorted_preds[1][1],
                                                                    sorted_preds[2][1]))
-    '''
-    if len(sorted_target) == 3:
-        logging.info("ground: (0, {:d}), (1, {:d}), (2, {:d}) ".format(sorted_target[0][1], sorted_target[1][1],
-                                                                   sorted_target[2][1]))
-    elif len(sorted_target) == 2:
-        logging.info("ground: (0, {:d}), (1, {:d})".format(sorted_target[0][1], sorted_target[1][1]))
-    else:
-        logging.info("ground: (0, {:d})".format(sorted_target[0][1]))
-
-    if len(sorted_preds) == 3:
-        logging.info("ground: (0, {:d}), (1, {:d}), (2, {:d}) ".format(sorted_preds[0][1], sorted_preds[1][1],
-                                                                       sorted_preds[2][1]))
-    elif len(sorted_preds) == 2:
-        logging.info("ground: (0, {:d}), (1, {:d})".format(sorted_preds[0][1], sorted_preds[1][1]))
-    else:
-        logging.info("ground: (0, {:d})".format(sorted_preds[0][1]))
-    '''
 
     target_names = ['驳回诉请', '部分支持', "支持诉请"]
     # if mode == "test":
@@ -427,9 +410,9 @@ def train(dataset, config: Data):
 if __name__ == '__main__':
     print(datetime.datetime.now())
     parser = argparse.ArgumentParser(description='Augmenting Deep Learning with Expert Prior Knowledge for Reasonable Charge Prediction')
-    parser.add_argument('--train', default="./data/70487train-fact.json")
-    parser.add_argument('--dev', default="./data/70487val-fact.json")
-    parser.add_argument('--test', default="./data/70487test-fact.json")
+    parser.add_argument('--train', default="./data/chaming-train.json")
+    parser.add_argument('--dev', default="./data/chaming-dev.json")
+    parser.add_argument('--test', default="./data/chaming-test.json")
     parser.add_argument('--status', default="train")
     parser.add_argument('--savemodel', default="")
     parser.add_argument('--savedset', default="")
@@ -446,9 +429,10 @@ if __name__ == '__main__':
     parser.add_argument('--max_decoder_step', default=100)
 
     parser.add_argument('--HP_iteration', default=30)
-    parser.add_argument('--HP_batch_size', default=16)
+    parser.add_argument('--HP_batch_size', default=64)
     parser.add_argument('--HP_hidden_dim', default=256)
     parser.add_argument('--HP_dropout', default=0.2)
+    parser.add_argument('--HP_lstmdropout', default=0.5)
     parser.add_argument('--HP_lstm_layer', default=1)
     parser.add_argument('--HP_lr', default=1e-3)
 

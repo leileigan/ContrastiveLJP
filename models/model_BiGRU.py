@@ -52,22 +52,25 @@ class DocEncoder(nn.Module):
         self.word_embedding_layer  = word_embedding_layer
         self.hidden_dim = config.HP_hidden_dim // 2
         self.word_dim = config.word_emb_dim
+        self.word_emb_dropout = nn.Dropout(config.HP_dropout)
 
         self.lstm1 = nn.LSTM(self.word_dim, hidden_size=self.hidden_dim, num_layers=1, batch_first=True,
                              bidirectional=True)
+        self.lstm_dropout = nn.Dropout(config.HP_lstmdropout)
         self.attn_p = nn.Parameter(torch.Tensor(self.hidden_dim * 2, 1))
         nn.init.uniform_(self.attn_p, -0.1, 0.1)
 
     def forward(self, input_x, input_sentences_len):
 
         word_embeds = self.word_embedding_layer.forward(input_x)
+        word_embeds = self.word_emb_dropout(word_embeds)
         hidden = None
         lstm1_out, hidden = self.lstm1.forward(word_embeds, hidden) # [batch_size, max_sequence_lens, hidden_dim]
         attn_p_weights = torch.matmul(lstm1_out, self.attn_p) # [batch_size, max_sequence_lens]
         attn_p_out = F.softmax(attn_p_weights, dim=1)
         doc_out = lstm1_out * attn_p_out
         doc_out = torch.sum(doc_out, dim=1) # [batch_size, max_sequence_lens, hidden_dim] > [batch_size, hidden_dim]
-
+        doc_out = self.lstm_dropout(doc_out)
         return doc_out # batch_size, hidden_dim
 
 
@@ -130,7 +133,6 @@ class LawModel(nn.Module):
         super(LawModel, self).__init__()
         self.word_embeddings_layer = torch.nn.Embedding(config.word_alphabet_size, config.word_emb_dim, padding_idx=0)
         self.doc_encoder = DocEncoder(config, self.word_embeddings_layer)
-        self.doc_dropout = torch.nn.Dropout(config.HP_dropout)
 
         self.claim_classifier = torch.nn.Linear(config.HP_hidden_dim, 3)
         self.bce_loss = torch.nn.BCELoss()
@@ -139,7 +141,6 @@ class LawModel(nn.Module):
         if config.HP_gpu:
             self.word_embeddings_layer = self.word_embeddings_layer.cuda()
             self.doc_encoder = self.doc_encoder.cuda()
-            self.doc_dropout = self.doc_dropout.cuda()
 
             self.claim_classifier = self.claim_classifier.cuda()
             self.bce_loss = self.bce_loss.cuda()
@@ -165,7 +166,6 @@ class LawModel(nn.Module):
         :return:
         """
         doc_rep = self.doc_encoder.forward(input_x,  input_sentences_lens) # [batch_size, max_sequence_lens, hidden_dim]
-        doc_rep = self.doc_dropout(doc_rep) # [batch_size, hidden_size]
         claim_outputs = self.claim_classifier(doc_rep) # [batch_size, 3]
         claim_log_softmax = torch.nn.functional.log_softmax(claim_outputs, dim=1)
         loss_claim = self.nll_loss(claim_log_softmax, input_claims_y.long())
@@ -177,7 +177,6 @@ class LawModel(nn.Module):
     def forward(self, input_x,  input_sentences_lens, input_fact, input_claims_y):
         #, input_sample_mask, input_sentences_mask
         doc_rep = self.doc_encoder.forward(input_x, input_sentences_lens)  # [batch_size, hidden_dim]
-        doc_rep = self.doc_dropout(doc_rep) # [batch_size, hidden_size]
         claim_outputs = self.claim_classifier(doc_rep)
         claim_log_softmax = torch.nn.functional.log_softmax(claim_outputs, dim=1)
         _, claim_predicts = torch.max(claim_log_softmax, dim=1)
