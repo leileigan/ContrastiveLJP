@@ -52,6 +52,8 @@ class DocEncoder(nn.Module):
         self.word_embedding_layer  = word_embedding_layer
         self.hidden_dim = config.HP_hidden_dim // 2
         self.word_dim = config.word_emb_dim
+        self.word_embeds_dropout = nn.Dropout(config.HP_dropout)
+        self.lstm_dropout = nn.Dropout(config.HP_lstmdropout)
 
         self.lstm1 = nn.LSTM(self.word_dim, hidden_size=self.hidden_dim, num_layers=1, batch_first=True,
                              bidirectional=True)
@@ -130,7 +132,6 @@ class LawModel(nn.Module):
         super(LawModel, self).__init__()
         self.word_embeddings_layer = torch.nn.Embedding(config.word_alphabet_size, config.word_emb_dim, padding_idx=0)
         self.doc_encoder = DocEncoder(config, self.word_embeddings_layer)
-        self.doc_dropout = torch.nn.Dropout(config.HP_dropout)
 
         self.fact_classifier = torch.nn.Linear(config.HP_hidden_dim, config.fact_num)
         self.fact_sigmoid = torch.nn.Sigmoid()
@@ -142,7 +143,6 @@ class LawModel(nn.Module):
         if config.HP_gpu:
             self.word_embeddings_layer = self.word_embeddings_layer.cuda()
             self.doc_encoder = self.doc_encoder.cuda()
-            self.doc_dropout = self.doc_dropout.cuda()
 
             self.fact_classifier = self.fact_classifier.cuda()
             self.fact_sigmoid = self.fact_sigmoid.cuda()
@@ -162,7 +162,6 @@ class LawModel(nn.Module):
         :return:
         """
         doc_rep = self.doc_encoder.forward(input_x,  input_sentences_lens) # [batch_size, max_sequence_lens, hidden_dim]
-        doc_rep = self.doc_dropout(doc_rep) # [batch_size, hidden_size]
         claim_outputs = self.claim_classifier(doc_rep) # [batch_size, 3]
         claim_log_softmax = torch.nn.functional.log_softmax(claim_outputs, dim=1)
         loss_claim = self.nll_loss(claim_log_softmax, input_claims_y.long())
@@ -180,7 +179,6 @@ class LawModel(nn.Module):
         #, input_sample_mask, input_sentences_mask
         doc_rep = self.doc_encoder.forward(input_x, input_sentences_lens)  # [batch_size, hidden_dim]
         doc_rep = self.doc_dropout(doc_rep) # [batch_size, hidden_size]
-        claim_outputs = self.claim_classifier(doc_rep)
         claim_log_softmax = torch.nn.functional.log_softmax(claim_outputs, dim=1)
         _, claim_predicts = torch.max(claim_log_softmax, dim=1)
 
