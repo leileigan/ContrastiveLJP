@@ -125,6 +125,24 @@ class Data:
 
         self.word_alphabet_size = self.word_alphabet.size()
 
+    def build_word_alphabet(self, input_file):
+        with codecs.open(input_file, mode='r', encoding='utf-8') as input_data:
+            json_data = json.load(input_data)
+
+        for _, v in json_data.items():
+            chaming = v['chaming']
+            chaming_list = list(jieba.cut(chaming.strip()))
+            for word in chaming_list:
+                self.word_alphabet.add(word)
+
+            claims_split = v["claims_split"]
+            for claim in claims_split:
+                claim_list = list(jieba.cut(claim.strip()))
+                for word in claim_list:
+                    self.word_alphabet.add(word)
+
+        self.word_alphabet_size = self.word_alphabet.size()
+
 
     def build_alphabet(self, input_file):
 
@@ -133,22 +151,21 @@ class Data:
 
         for _, v in json_data.items():
             chaming = v['chaming']
-            chaming_cut = jieba.cut(chaming)
-            chaming_cut_list = list(chaming_cut)
-            for word in chaming_cut_list:
-                self.word_alphabet.add(word)
+            chaming_list = list(chaming.strip())
+            for c in chaming_list:
+                self.word_alphabet.add(c)
 
             claims_split = v["claims_split"]
             for claim in claims_split:
-                claim_cut = jieba.cut(claim)
-                claim_cut_list = list(claim_cut)
-                for word in claim_cut_list:
-                    self.word_alphabet.add(word)
+                claim_list = list(claim.strip())
+                for c in claim_list:
+                    self.word_alphabet.add(c)
 
         self.word_alphabet_size = self.word_alphabet.size()
-        self.fix_alphabet()
+
 
     def fix_alphabet(self):
+        print('word alphabet size:', self.word_alphabet_size)
         self.word_alphabet.close()
 
     def build_word_pretrain_emb(self, emb_path):
