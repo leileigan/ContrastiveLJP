@@ -427,7 +427,7 @@ if __name__ == '__main__':
     config.HP_lstm_layer = args.HP_lstm_layer
     config.HP_lr = args.HP_lr
     config.MAX_SENTENCE_LENGTH = args.MAX_SENTENCE_LENGTH
-    config.filters_size = args.filter_size
+    config.filters_size = args.filters_size
     config.num_filters = args.num_filters
 
     data_initialization(config, args.train, args.dev, args.test)
