@@ -78,6 +78,8 @@ class Data:
         self.heads = 4
         self.fact_edim = 300
 
+        self.filters_size = [1, 2, 3, 4]
+        self.num_filters = [64, 64, 64, 64]
 
     def show_data_summary(self):
         print("DATA SUMMARY START:")
