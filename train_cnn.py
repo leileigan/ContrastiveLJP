@@ -1,4 +1,4 @@
-#-*- coding:utf-8 _*-  
+#-*- coding:utf-8 _*-
 # @Author: Leilei Gan
 # @Time: 2020/05/13
 # @Contact: 11921071@zju.edu.cn
@@ -10,7 +10,7 @@ from utils.data import Data
 import time, random
 from torch import optim
 import pickle
-from models.model_BiGRU import LawModel
+from models.model_CNN import LawModel
 import sys, json
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import f1_score, precision_score, recall_score
@@ -405,10 +405,10 @@ if __name__ == '__main__':
     parser.add_argument('--max_decoder_step', default=100)
 
     parser.add_argument('--HP_iteration', default=30)
-    parser.add_argument('--HP_batch_size', default=64)
+    parser.add_argument('--HP_batch_size', default=128)
     parser.add_argument('--HP_hidden_dim', default=256)
     parser.add_argument('--HP_dropout', default=0.2)
-    parser.add_argument('--HP_lstmdropout', default=0.5)
+    parser.add_argument('--HP_lstmdropout', default=0.2)
     parser.add_argument('--HP_lstm_layer', default=1)
     parser.add_argument('--HP_lr', default=1e-3)
 
@@ -427,8 +427,8 @@ if __name__ == '__main__':
     config.HP_lstm_layer = args.HP_lstm_layer
     config.HP_lr = args.HP_lr
     config.MAX_SENTENCE_LENGTH = args.MAX_SENTENCE_LENGTH
-    config.filters_size = args.filters_size
-    config.num_filters = args.num_filters
+    config.filters_size = [int(item) for item in args.filters_size.strip().split(',')]
+    config.num_filters = [int(item) for item in args.num_filters.strip().split(',')]
 
     data_initialization(config, args.train, args.dev, args.test)
 
