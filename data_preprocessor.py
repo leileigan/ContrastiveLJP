@@ -10,22 +10,26 @@ import jieba
 import gensim
 from utils.data import Data
 
-def read_data(path):
+def split_data(path):
     with codecs.open(path, 'r', 'utf-8') as json_data:
         all_data = json.load(json_data)
 
     all_data = list(all_data.items())
     print("total data size:", len(all_data))
-    train_data, other_data = train_test_split(all_data,  test_size=0.2, random_state=2020, shuffle=True)
-    valid_data, test_data = train_test_split(other_data,  test_size=0.5, random_state=2020, shuffle=True)
+    train_data, other_data = train_test_split(all_data,  test_size=0.2, random_state=2020)
+    _, train_hand_out = train_test_split(train_data, test_size=0.1, random_state=2020)
+    valid_data, test_data = train_test_split(other_data,  test_size=0.5, random_state=2020)
 
     print("train data size: ", len(train_data))
+    print("hand out data size: ", len(train_hand_out))
     print("val data size:", len(valid_data))
     print("test data size:", len(test_data))
 
-    train_data_dic, valid_data_dic, test_data_dic = {}, {}, {}
+    train_data_dic, train_hand_out_dic, valid_data_dic, test_data_dic = {}, {}, {}, {}
     for item in train_data:
         train_data_dic[item[0]] = item[1]
+    for item in train_hand_out:
+        train_hand_out_dic[item[0]] = item[1]
     for item in valid_data:
         valid_data_dic[item[0]] = item[1]
     for item in test_data:
@@ -33,6 +37,9 @@ def read_data(path):
 
     with open('./data/chaming-train.json', 'w+', encoding='utf-8') as train_file:
         json.dump(train_data_dic, train_file, indent=4, ensure_ascii=False)
+
+    with open('./data/chaming-handout.json', 'w+', encoding='utf-8') as h_file:
+        json.dump(train_hand_out_dic, h_file, indent=4, ensure_ascii=False)
 
     with open('./data/chaming-dev.json', 'w+', encoding='utf-8') as val_file:
         json.dump(valid_data_dic, val_file, indent=4, ensure_ascii=False)
@@ -141,6 +148,6 @@ def save_numpy(path, outpath):
 if __name__ == '__main__':
     print(datetime.datetime.now())
     # extract_chaming('data/70487total-1.json', 'data/chaming.json')
-    # read_data('data/chaming.json')
+    split_data('data/chaming.json')
     # train_word2vec(path='data/chaming.json', outpath='data/chaming.text')
-    save_numpy('data/word2vec.txt', 'data/word2vec.npy')
+    # save_numpy('data/word2vec.txt', 'data/word2vec.npy')
