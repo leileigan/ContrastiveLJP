@@ -311,7 +311,7 @@ def train(dataset, config: Data):
     print(model)
     parameters = filter(lambda p: p.requires_grad, model.parameters())
 
-    optimizer = optim.Adam(parameters, lr=5e-6)  # fine tuning
+    optimizer = optim.Adam(parameters, lr=config.HP_lr)  # fine tuning
 
     print('optimizer: ', optimizer)
 
