@@ -76,7 +76,7 @@ class DocEncoder(nn.Module):
     def forward(self, input_x, input_sentences_len):
 
         word_embeds = self.word_embedding_layer.forward(input_x) # [batch_size, seq_len, word_embed_size]
-        word_embeds = self.word_emb_dropout(word_embeds)
+        # word_embeds = self.word_emb_dropout(word_embeds)
         word_embeds = word_embeds.unsqueeze(1) # [batch_size, 1, seq_len, word_embed_size]
         out = torch.cat(tuple([self.conv_and_pool(word_embeds, conv) for conv in self.convs]), 1)
         out = self.cnn_dropout(out)
@@ -140,8 +140,13 @@ class LawModel(nn.Module):
 
     def __init__(self, config: utils.data.Data):
         super(LawModel, self).__init__()
-        self.word_embeddings_layer = torch.nn.Embedding(config.word_alphabet_size, config.word_emb_dim)
-        self.word_embeddings_layer.weight.data.copy_(torch.from_numpy(self.random_embedding(config.word_alphabet_size, config.word_emb_dim)))
+        self.word_embeddings_layer = torch.nn.Embedding(config.word_alphabet_size, config.word_emb_dim, padding_idx=0, )
+        if config.pretrain_word_embedding is not None:
+            self.word_embeddings_layer.weight.data.copy_(torch.from_numpy(config.pretrain_word_embedding))
+            self.word_embeddings_layer.weight.requires_grad = False
+        else:
+            self.word_embeddings_layer.weight.data.copy_(torch.from_numpy(self.random_embedding(config.word_alphabet_size, config.word_emb_dim)))
+
         self.doc_encoder = DocEncoder(config, self.word_embeddings_layer)
 
         self.claim_classifier = torch.nn.Linear(config.HP_hidden_dim, 3)
