@@ -13,13 +13,18 @@ import pickle
 from models.model_BiGRU import LawModel
 import sys, json
 from sklearn.model_selection import train_test_split
-from sklearn.metrics import f1_score, precision_score, recall_score
+from sklearn.metrics import f1_score, precision_score, recall_score, accuracy_score
 from sklearn.metrics import classification_report
 import jieba
 from torch.nn.utils.rnn import pack_sequence, pad_sequence
 from scipy import stats
 import numpy as np
 import logging
+
+SEED_NUM = 2020
+torch.manual_seed(SEED_NUM)
+random.seed(SEED_NUM)
+np.random.seed(SEED_NUM)
 
 def process_data(data):
 # doc_word_ids, sentences_num, doc_sentence_lens,  claims, claims_num, claims_len, fact_labels, claims_labels
@@ -41,10 +46,15 @@ def process_data(data):
 
         claims_labels.append(item[7])
     claims_labels=sum(claims_labels,[])
+
     if len(claims_labels)!=len(fact_labels):
         print("label not equal")
     print('process doc word ids len:', len(doc_word_ids))
     print('process claim labels len:', len(claims_labels))
+    print('doc word ids:', doc_word_ids[0])
+    print('doc lens:', doc_lens[0])
+    print('fact labels:', fact_labels[0])
+    print('claims labels:', claims_labels[0])
     data = list(zip(doc_word_ids, doc_lens, fact_labels, claims_labels))
     return data
 
@@ -146,18 +156,24 @@ def get_result(target, preds, mode):
     micro_f1 = f1_score(target, preds, average="micro")
     print(("%s," % mode) + str("micro_f1 %.4f," % micro_f1) + str("macro_f1 %.4f," % macro_f1) + str(
         "-macro_precision %.4f," % macro_precision) + str("-macro_recall %.4f" % macro_recall))
-    logging.info("val," + str("micro_f1 %.4f," % micro_f1) + str("macro_f1 %.4f," % macro_f1) + str(
-        "-macro_precision %.4f," % macro_precision) + str("-macro_recall %.4f" % macro_recall))
 
     from collections import Counter
     sorted_target = sorted(Counter(target).items())
     sorted_preds = sorted(Counter(preds).items())
 
+    print('ground:')
+    for item in sorted_target:
+        print(item)
+
+    print('predicts:')
+    for item in sorted_preds:
+        print(item)
+    ''' 
     print("ground: (0, {:d}), (1, {:d}), (2, {:d}) ".format(sorted_target[0][1], sorted_target[1][1],
                                                                    sorted_target[2][1]))
     print("predicts: (0, {:d}), (1, {:d}), (2, {:d}) ".format(sorted_preds[0][1], sorted_preds[1][1],
                                                                    sorted_preds[2][1]))
-
+    '''
     target_names = ['驳回诉请', '部分支持', "支持诉请"]
     # if mode == "test":
     if mode:
@@ -209,13 +225,11 @@ def generate_batch_instance(input_data, gpu):
 
 def data_initialization(data, train_file, dev_file, test_file):
     print('begin building word alphabet set')
-    data.build_alphabet(train_file)
-    data.build_alphabet(dev_file)
-    data.build_alphabet(test_file)
+    data.build_word_alphabet(train_file)
+    data.build_word_alphabet(dev_file)
+    data.build_word_alphabet(test_file)
     data.fix_alphabet()
     print('word alphabet size:', data.word_alphabet_size)
-    print('label alphabet size:', data.label_alphabet_size)
-    print('label alphabet:', data.label_alphabet.instances)
     return data
 
 def load_data_setting(save_file):
@@ -226,10 +240,18 @@ def load_data_setting(save_file):
     return data
 
 
+def lr_decay(optimizer, epoch, decay_rate, init_lr):
+    lr = init_lr * ((1 - decay_rate) ** epoch)
+    print(" Learning rate is setted as:", lr)
+    for param_group in optimizer.param_groups:
+        param_group['lr'] = lr
+    return optimizer
+
+
 def evaluate(model, dataset, name):
 
     model.eval()
-    batch_size = 16
+    batch_size = 128
     train_num = len(dataset)
     total_batch = train_num // batch_size + 1
 
@@ -261,18 +283,19 @@ def evaluate(model, dataset, name):
         ground_claim_labels.extend(claims_labels_batch.cpu().tolist())
 
     score = get_result(ground_claim_labels, claim_predicts, name)
-
+    accuracy = accuracy_score(ground_claim_labels, claim_predicts)
 
     decode_time = time.time() - start_time
     speed = train_num / decode_time
     print(
-        "%s finished. Time: %.2fs, speed: %.2fst/s, total claim loss: %.4f, score: %.4f" %
-        (name, decode_time, speed, total_claim_loss, score))
+        "%s finished. Time: %.2fs, speed: %.2fst/s, total claim loss: %.4f, score: %.4f, accuracy: %.4f" %
+        (name, decode_time, speed, total_claim_loss, score, accuracy))
+    model.train()
+
     return score
 
 def train(dataset, config: Data):
     train_data_set = dataset["train_data_set"]
-    # train_data_set = dataset["valid_data_set"]
     valid_data_set = dataset["valid_data_set"]
     test_data_set = dataset["test_data_set"]
 
@@ -285,6 +308,7 @@ def train(dataset, config: Data):
     print(model)
     parameters = filter(lambda p: p.requires_grad, model.parameters())
 
+    '''
     if config.use_sgd:
         optimizer = optim.SGD(parameters, lr=config.HP_lr, momentum=config.HP_momentum)
     elif config.use_adam:
@@ -293,6 +317,9 @@ def train(dataset, config: Data):
         optimizer = optim.Adam(parameters, lr=5e-6)  # fine tuning
     else:
         raise ValueError("Unknown optimizer")
+    '''
+    from utils.optimization import BertAdam
+    optimizer = BertAdam(parameters, config.HP_lr, warmup=0.05 , t_total=batch_num)
     print('optimizer: ', optimizer)
 
     best_dev = -1
@@ -301,7 +328,7 @@ def train(dataset, config: Data):
         epoch_start = time.time()
         temp_start = epoch_start
         print("Epoch: %s/%s" % (idx, config.HP_iteration))
-
+        # optimizer = lr_decay(optimizer, idx, config.HP_lr_decay, config.HP_lr)
         sample_loss = 0
         sample_claim_loss = 0
         sample_fact_loss = 0
@@ -319,6 +346,9 @@ def train(dataset, config: Data):
         train_num = len(train_data_set)
         total_batch = train_num // batch_size + 1
 
+        ground_y = []
+        predicts_y = []
+
         for batch_idx in range(total_batch):
             start = batch_idx * batch_size
             end = (batch_idx + 1) * batch_size
@@ -332,8 +362,12 @@ def train(dataset, config: Data):
             input_x_batch, claims_labels_batch, fact_labels_batch, input_sentences_len_batch \
                 = generate_batch_instance(batch_instances, config.HP_gpu)
 
-            claim_loss,  batch_claim_predicts = model.neg_log_likelihood_loss(
+            claim_loss, batch_claim_predicts = model.neg_log_likelihood_loss(
                     input_x_batch, input_sentences_len_batch, fact_labels_batch, claims_labels_batch)
+
+            ground_y.extend(claims_labels_batch.cpu().tolist())
+            predicts_y.extend(batch_claim_predicts.cpu().tolist())
+            cur_accuracy = accuracy_score(ground_y, predicts_y)
 
             loss = claim_loss
             total_loss += loss.data
@@ -342,30 +376,30 @@ def train(dataset, config: Data):
             sample_loss += loss.data
             sample_claim_loss += claim_loss.data
 
-            if end % 500 == 0:
-                temp_time = time.time()
-                temp_cost = temp_time - temp_start
-                temp_start = temp_time
-                print("     Instance: %s; Time: %.2fs; loss: %.4f; claim loss %.4f" % (
-                    end, temp_cost, sample_loss, sample_claim_loss))
-                sys.stdout.flush()
-                sample_loss = 0
-                sample_claim_loss = 0
-
             loss.backward()
             optimizer.step()
             model.zero_grad()
 
+            if end % 500 == 0:
+                temp_time = time.time()
+                temp_cost = temp_time - temp_start
+                temp_start = temp_time
+                print("     Instance: %s; Time: %.2fs; loss: %.4f; claim loss %.4f; accuracy: %.4f" % (
+                    end, temp_cost, sample_loss, sample_claim_loss, cur_accuracy))
+                sys.stdout.flush()
+                sample_loss = 0
+                sample_claim_loss = 0
+
 
         epoch_finish = time.time()
         epoch_cost = epoch_finish - epoch_start
-        print("Epoch: %s training finished. Time: %.2fs, speed: %.2fst/s,  total loss: %.4f, total claim loss: %.4f" %
-              (idx, epoch_cost, train_num / epoch_cost, total_loss, total_claim_loss))
+        epoch_accuracy = accuracy_score(ground_y, predicts_y)
+        print("Epoch: %s training finished. Time: %.2fs, speed: %.2fst/s,  total loss: %.4f, total claim loss: %.4f, accuracy: %.4f" %
+              (idx, epoch_cost, train_num / epoch_cost, total_loss, total_claim_loss, epoch_accuracy))
         sys.stdout.flush()
 
         # evaluate dev data
         current_score = evaluate(model, valid_data_set, "Dev")
-
         if current_score > best_dev:
             print("Exceed previous best acc score:", best_dev)
             best_dev = current_score
@@ -374,7 +408,6 @@ def train(dataset, config: Data):
             torch.save(model.state_dict(), model_name)
             # evaluate test data
             _ = evaluate(model, test_data_set, "Test")
-
 
 if __name__ == '__main__':
     print(datetime.datetime.now())
@@ -386,9 +419,8 @@ if __name__ == '__main__':
     parser.add_argument('--savemodel', default="")
     parser.add_argument('--savedset', default="")
 
-    parser.add_argument('--word_emb_dim', default=300)
-    parser.add_argument('--embedding_dense_dim', default=300)
-    parser.add_argument('--fact_edim', default=300)
+    parser.add_argument('--word_emb_dim', default=200)
+    parser.add_argument('--fact_edim', default=200)
     parser.add_argument('--MAX_SENTENCE_LENGTH', default=250)
     parser.add_argument('--fact_num', default=12)
     parser.add_argument('--facts',
@@ -397,9 +429,9 @@ if __name__ == '__main__':
     parser.add_argument('--heads', default=4)
     parser.add_argument('--max_decoder_step', default=100)
 
-    parser.add_argument('--HP_iteration', default=30)
-    parser.add_argument('--HP_batch_size', default=64)
-    parser.add_argument('--HP_hidden_dim', default=256)
+    parser.add_argument('--HP_iteration', default=50)
+    parser.add_argument('--HP_batch_size', default=16)
+    parser.add_argument('--HP_hidden_dim', default=200)
     parser.add_argument('--HP_dropout', default=0.2)
     parser.add_argument('--HP_lstmdropout', default=0.5)
     parser.add_argument('--HP_lstm_layer', default=1)
@@ -411,6 +443,7 @@ if __name__ == '__main__':
     config.facts = list(map(str, args.facts.split(",")))
     config.HP_iteration = args.HP_iteration
     config.HP_batch_size = args.HP_batch_size
+    config.word_emb_dim = args.word_emb_dim
     config.HP_hidden_dim = args.HP_hidden_dim
     config.HP_dropout = args.HP_dropout
     config.HP_lstmdropout = args.HP_lstmdropout
@@ -418,18 +451,16 @@ if __name__ == '__main__':
     config.HP_lr = args.HP_lr
     config.MAX_SENTENCE_LENGTH = args.MAX_SENTENCE_LENGTH
 
-    config.build_alphabet(args.train)
-    config.build_alphabet(args.dev)
-    config.build_alphabet(args.test)
-    config.fix_alphabet()
-    print('word alphabet size:', config.word_alphabet_size)
+    data_initialization(config, args.train, args.dev, args.test)
+
+    config.build_word_pretrain_emb('data/word2vec.dim200.txt')
 
     print("\nLoading data...")
     train_data = load_data(args.train, config)
     valid_data = load_data(args.dev, config)
     test_data = load_data(args.test, config)
 
-    print("train_data %d, valid_data %d, test_data %d." % (
+    print("train_data %d,  valid_data %d, test_data %d." % (
         len(train_data), len(valid_data), len(test_data)))
 
     data_dict = {
@@ -438,8 +469,6 @@ if __name__ == '__main__':
         "valid_data_set": process_data(valid_data)
     }
     print("\nSampling data...")
-    pass
-
     config.show_data_summary()
     print("\nTraining...")
     train(data_dict, config)
