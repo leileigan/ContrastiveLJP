@@ -12,8 +12,15 @@ import math, copy, time
 from transformers import *
 import datetime
 import utils.data
+import random
+
 
 BERT_MODEL_PATH = "/mnt/data/ganleilei/chinese_L-12_H-768_A-12/"
+SEED_NUM = 2020
+torch.manual_seed(SEED_NUM)
+random.seed(SEED_NUM)
+np.random.seed(SEED_NUM)
+
 
 class ClaimEncoder(nn.Module):
     def __init__(self, config: utils.data.Data, word_embedding_layer):
@@ -52,7 +59,6 @@ class DocEncoder(nn.Module):
         self.word_embedding_layer  = word_embedding_layer
         self.hidden_dim = config.HP_hidden_dim // 2
         self.word_dim = config.word_emb_dim
-        self.word_emb_dropout = nn.Dropout(config.HP_dropout)
 
         self.lstm1 = nn.LSTM(self.word_dim, hidden_size=self.hidden_dim, num_layers=1, batch_first=True,
                              bidirectional=True)
@@ -63,14 +69,13 @@ class DocEncoder(nn.Module):
     def forward(self, input_x, input_sentences_len):
 
         word_embeds = self.word_embedding_layer.forward(input_x)
-        word_embeds = self.word_emb_dropout(word_embeds)
         hidden = None
         lstm1_out, hidden = self.lstm1.forward(word_embeds, hidden) # [batch_size, max_sequence_lens, hidden_dim]
+        lstm1_out = self.lstm_dropout.forward(lstm1_out)
         attn_p_weights = torch.matmul(lstm1_out, self.attn_p) # [batch_size, max_sequence_lens]
         attn_p_out = F.softmax(attn_p_weights, dim=1)
         doc_out = lstm1_out * attn_p_out
         doc_out = torch.sum(doc_out, dim=1) # [batch_size, max_sequence_lens, hidden_dim] > [batch_size, hidden_dim]
-        doc_out = self.lstm_dropout(doc_out)
         return doc_out # batch_size, hidden_dim
 
 
@@ -132,7 +137,15 @@ class LawModel(nn.Module):
     def __init__(self, config: utils.data.Data):
         super(LawModel, self).__init__()
         self.word_embeddings_layer = torch.nn.Embedding(config.word_alphabet_size, config.word_emb_dim, padding_idx=0)
+
+        if config.pretrain_word_embedding is not None:
+            self.word_embeddings_layer.weight.data.copy_(torch.from_numpy(config.pretrain_word_embedding))
+            self.word_embeddings_layer.weight.requires_grad = False
+        else:
+            self.word_embeddings_layer.weight.data.copy_(torch.from_numpy(self.random_embedding(config.word_alphabet_size, config.word_emb_dim)))
+
         self.doc_encoder = DocEncoder(config, self.word_embeddings_layer)
+        # self.doc_dropout = torch.nn.Dropout(config.HP_dropout)
 
         self.claim_classifier = torch.nn.Linear(config.HP_hidden_dim, 3)
         self.bce_loss = torch.nn.BCELoss()
@@ -141,6 +154,7 @@ class LawModel(nn.Module):
         if config.HP_gpu:
             self.word_embeddings_layer = self.word_embeddings_layer.cuda()
             self.doc_encoder = self.doc_encoder.cuda()
+            # self.doc_dropout = self.doc_dropout.cuda()
 
             self.claim_classifier = self.claim_classifier.cuda()
             self.bce_loss = self.bce_loss.cuda()
