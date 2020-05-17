@@ -60,7 +60,6 @@ class DocEncoder(nn.Module):
         self.word_embedding_layer  = word_embedding_layer
         self.hidden_dim = config.HP_hidden_dim // 2
         self.word_dim = config.word_emb_dim
-        self.word_emb_dropout = nn.Dropout(config.HP_dropout)
 
         print('filter sizes:', config.filters_size)
         print('num filters:', config.num_filters)
@@ -140,7 +139,7 @@ class LawModel(nn.Module):
 
     def __init__(self, config: utils.data.Data):
         super(LawModel, self).__init__()
-        self.word_embeddings_layer = torch.nn.Embedding(config.word_alphabet_size, config.word_emb_dim, padding_idx=0, )
+        self.word_embeddings_layer = torch.nn.Embedding(config.word_alphabet_size, config.word_emb_dim, padding_idx=0)
         if config.pretrain_word_embedding is not None:
             self.word_embeddings_layer.weight.data.copy_(torch.from_numpy(config.pretrain_word_embedding))
             self.word_embeddings_layer.weight.requires_grad = False
@@ -180,9 +179,9 @@ class LawModel(nn.Module):
         :param input_claims_y: [batch_size]
         :return:
         """
-        doc_rep = self.doc_encoder.forward(input_x,  input_sentences_lens) # [batch_size, max_sequence_lens, hidden_dim]
+        doc_rep = self.doc_encoder.forward(input_x,  input_sentences_lens) # [batch_size, hidden_dim]
         claim_outputs = self.claim_classifier(doc_rep) # [batch_size, 3]
-        claim_log_softmax = torch.nn.functional.log_softmax(claim_outputs, dim=1)
+        claim_log_softmax = F.log_softmax(claim_outputs, dim=1)
         loss_claim = self.nll_loss(claim_log_softmax, input_claims_y.long())
         _, claim_predicts = torch.max(claim_log_softmax, dim=1)
 

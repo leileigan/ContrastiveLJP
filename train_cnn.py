@@ -20,6 +20,7 @@ from torch.nn.utils.rnn import pack_sequence, pad_sequence
 from scipy import stats
 import numpy as np
 import logging
+from utils.optimization import BertAdam
 
 SEED_NUM = 2020
 torch.manual_seed(SEED_NUM)
@@ -240,6 +241,12 @@ def load_data_setting(save_file):
     data.show_data_summary()
     return data
 
+def lr_decay(optimizer, epoch, decay_rate, init_lr):
+    lr = init_lr * ((1 - decay_rate) ** epoch)
+    print(" Learning rate is setted as:", lr)
+    for param_group in optimizer.param_groups:
+        param_group['lr'] = lr
+    return optimizer
 
 def evaluate(model, dataset, name):
 
@@ -292,13 +299,13 @@ def train(dataset, config: Data):
     test_data_set = dataset["test_data_set"]
 
     train_num_samples = len(train_data_set)
-    # batch_num = (train_num_samples * FLAGS.num_epochs) // FLAGS.batch_size + 1
     batch_num = (train_num_samples * config.HP_iteration) // config.HP_batch_size + 1
 
     model = LawModel(config)
     print("Training model...")
     print(model)
     parameters = filter(lambda p: p.requires_grad, model.parameters())
+
 
     if config.use_sgd:
         optimizer = optim.SGD(parameters, lr=config.HP_lr, momentum=config.HP_momentum)
@@ -308,6 +315,8 @@ def train(dataset, config: Data):
         optimizer = optim.Adam(parameters, lr=config.HP_lr)  # fine tuning
     else:
         raise ValueError("Unknown optimizer")
+
+    # optimizer = BertAdam(parameters, config.HP_lr, warmup=0.05 , t_total=batch_num)
     print('optimizer: ', optimizer)
 
     best_dev = -1
@@ -316,6 +325,7 @@ def train(dataset, config: Data):
         epoch_start = time.time()
         temp_start = epoch_start
         print("Epoch: %s/%s" % (idx, config.HP_iteration))
+        optimizer = lr_decay(optimizer, idx, config.HP_lr_decay, config.HP_lr)
 
         sample_loss = 0
         sample_claim_loss = 0
@@ -399,8 +409,7 @@ def train(dataset, config: Data):
             torch.save(model.state_dict(), model_name)
             # evaluate test data
             _ = evaluate(model, test_data_set, "Test")
-        else:
-            evaluate(model, test_data_set, "Test")
+
 
 if __name__ == '__main__':
     print(datetime.datetime.now())
@@ -423,16 +432,16 @@ if __name__ == '__main__':
     parser.add_argument('--heads', default=4)
     parser.add_argument('--max_decoder_step', default=100)
 
-    parser.add_argument('--HP_iteration', default=30)
-    parser.add_argument('--HP_batch_size', default=128)
-    parser.add_argument('--HP_hidden_dim', default=200)
+    parser.add_argument('--HP_iteration', default=50)
+    parser.add_argument('--HP_batch_size', default=16)
+    parser.add_argument('--HP_hidden_dim', default=256)
     parser.add_argument('--HP_dropout', default=0.2)
     parser.add_argument('--HP_lstmdropout', default=0.2)
     parser.add_argument('--HP_lstm_layer', default=1)
     parser.add_argument('--HP_lr', default=1e-3)
 
     parser.add_argument('--filters_size', default='1,2,3,4')
-    parser.add_argument('--num_filters', default='50, 50, 50, 50')
+    parser.add_argument('--num_filters', default='64, 64, 64, 64')
 
     args = parser.parse_args()
 
@@ -451,7 +460,7 @@ if __name__ == '__main__':
 
     data_initialization(config, args.train, args.dev, args.test)
 
-    config.build_word_pretrain_emb('data/word2vec.txt')
+    config.build_word_pretrain_emb('data/word2vec.dim200.txt')
 
     print("\nLoading data...")
     train_data = load_data(args.train, config)
