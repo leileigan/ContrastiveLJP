@@ -453,7 +453,7 @@ if __name__ == '__main__':
     config.HP_lstm_layer = args.HP_lstm_layer
     config.HP_lr = args.HP_lr
     config.MAX_SENTENCE_LENGTH = args.MAX_SENTENCE_LENGTH
-    config.use_sgd = True if args.use_sgd.lower() == 'True' else False
+    config.use_sgd = True if args.use_sgd.lower() == 'true' else False
 
     data_initialization(config, args.train, args.dev, args.test)
 
