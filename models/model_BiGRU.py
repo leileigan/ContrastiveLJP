@@ -137,13 +137,11 @@ class LawModel(nn.Module):
     def __init__(self, config: utils.data.Data):
         super(LawModel, self).__init__()
         self.word_embeddings_layer = torch.nn.Embedding(config.word_alphabet_size, config.word_emb_dim, padding_idx=0)
-
         if config.pretrain_word_embedding is not None:
             self.word_embeddings_layer.weight.data.copy_(torch.from_numpy(config.pretrain_word_embedding))
             self.word_embeddings_layer.weight.requires_grad = False
         else:
             self.word_embeddings_layer.weight.data.copy_(torch.from_numpy(self.random_embedding(config.word_alphabet_size, config.word_emb_dim)))
-
         self.doc_encoder = DocEncoder(config, self.word_embeddings_layer)
         # self.doc_dropout = torch.nn.Dropout(config.HP_dropout)
 

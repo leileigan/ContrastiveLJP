@@ -308,7 +308,7 @@ def train(dataset, config: Data):
     print(model)
     parameters = filter(lambda p: p.requires_grad, model.parameters())
 
-    '''
+
     if config.use_sgd:
         optimizer = optim.SGD(parameters, lr=config.HP_lr, momentum=config.HP_momentum)
     elif config.use_adam:
@@ -317,9 +317,11 @@ def train(dataset, config: Data):
         optimizer = optim.Adam(parameters, lr=5e-6)  # fine tuning
     else:
         raise ValueError("Unknown optimizer")
+
     '''
     from utils.optimization import BertAdam
     optimizer = BertAdam(parameters, config.HP_lr, warmup=0.05 , t_total=batch_num)
+    '''
     print('optimizer: ', optimizer)
 
     best_dev = -1
@@ -328,7 +330,7 @@ def train(dataset, config: Data):
         epoch_start = time.time()
         temp_start = epoch_start
         print("Epoch: %s/%s" % (idx, config.HP_iteration))
-        # optimizer = lr_decay(optimizer, idx, config.HP_lr_decay, config.HP_lr)
+        optimizer = lr_decay(optimizer, idx, config.HP_lr_decay, config.HP_lr)
         sample_loss = 0
         sample_claim_loss = 0
         sample_fact_loss = 0
@@ -431,11 +433,12 @@ if __name__ == '__main__':
 
     parser.add_argument('--HP_iteration', default=50)
     parser.add_argument('--HP_batch_size', default=16)
-    parser.add_argument('--HP_hidden_dim', default=200)
+    parser.add_argument('--HP_hidden_dim', default=256)
     parser.add_argument('--HP_dropout', default=0.2)
     parser.add_argument('--HP_lstmdropout', default=0.5)
     parser.add_argument('--HP_lstm_layer', default=1)
     parser.add_argument('--HP_lr', default=1e-3)
+    parser.add_argument('--use_sgd', default="False")
 
     args = parser.parse_args()
 
@@ -450,6 +453,7 @@ if __name__ == '__main__':
     config.HP_lstm_layer = args.HP_lstm_layer
     config.HP_lr = args.HP_lr
     config.MAX_SENTENCE_LENGTH = args.MAX_SENTENCE_LENGTH
+    config.use_sgd = True if args.use_sgd.lower() == 'True' else False
 
     data_initialization(config, args.train, args.dev, args.test)
 
