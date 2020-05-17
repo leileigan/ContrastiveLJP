@@ -54,6 +54,8 @@ class DocEncoder(nn.Module):
 
         self.lstm1 = nn.LSTM(self.word_dim, hidden_size=self.hidden_dim, num_layers=1, batch_first=True,
                              bidirectional=True)
+
+        self.lstm_dropout = nn.Dropout(config.HP_lstmdropout)
         self.attn_p = nn.Parameter(torch.Tensor(self.hidden_dim * 2, 1))
         nn.init.uniform_(self.attn_p, -0.1, 0.1)
 
@@ -62,6 +64,9 @@ class DocEncoder(nn.Module):
         word_embeds = self.word_embedding_layer.forward(input_x)
         hidden = None
         lstm1_out, hidden = self.lstm1.forward(word_embeds, hidden) # [batch_size, max_sequence_lens, hidden_dim]
+
+        lstm1_out = self.lstm_dropout.forward(lstm1_out)
+
         attn_p_weights = torch.matmul(lstm1_out, self.attn_p) # [batch_size, max_sequence_lens]
         attn_p_out = F.softmax(attn_p_weights, dim=1)
         doc_out = lstm1_out * attn_p_out
@@ -75,8 +80,14 @@ class LawModel(nn.Module):
     def __init__(self, config: utils.data.Data):
         super(LawModel, self).__init__()
         self.word_embeddings_layer = torch.nn.Embedding(config.word_alphabet_size, config.word_emb_dim, padding_idx=0)
+
+        if config.pretrain_word_embedding is not None:
+            self.word_embeddings_layer.weight.data.copy_(torch.from_numpy(config.pretrain_word_embedding))
+            self.word_embeddings_layer.weight.requires_grad = False
+        else:
+            self.word_embeddings_layer.weight.data.copy_(torch.from_numpy(self.random_embedding(config.word_alphabet_size, config.word_emb_dim)))
+
         self.doc_encoder = DocEncoder(config, self.word_embeddings_layer)
-        self.doc_dropout = torch.nn.Dropout(config.HP_dropout)
 
         self.fact_classifier = torch.nn.Linear(config.HP_hidden_dim, config.fact_num)
         self.fact_sigmoid = torch.nn.Sigmoid()
@@ -93,7 +104,6 @@ class LawModel(nn.Module):
         if config.HP_gpu:
             self.word_embeddings_layer = self.word_embeddings_layer.cuda()
             self.doc_encoder = self.doc_encoder.cuda()
-            self.doc_dropout = self.doc_dropout.cuda()
 
             self.fact_classifier = self.fact_classifier.cuda()
             self.fact_sigmoid = self.fact_sigmoid.cuda()
@@ -118,7 +128,6 @@ class LawModel(nn.Module):
         :return:
         """
         doc_rep = self.doc_encoder.forward(input_x,  input_sentences_lens) # [batch_size, max_sequence_lens, hidden_dim]
-        doc_rep = self.doc_dropout(doc_rep) # [batch_size, hidden_size]
         claim_outputs = self.claim_classifier(doc_rep) # [batch_size, 3]
         claim_softmax_outputs = F.softmax(claim_outputs, dim=1)
         claim_log_softmax = F.log_softmax(claim_outputs, dim=1) # [batch_size, 3]

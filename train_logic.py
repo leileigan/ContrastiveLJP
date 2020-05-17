@@ -230,9 +230,9 @@ def load_data(path, config: Data):
                 if label == "驳回":
                     claim_label_decode.append(0)
                 elif label == "部分支持":
-                    claim_label_decode.append(2)
-                elif label == "支持":
                     claim_label_decode.append(1)
+                elif label == "支持":
+                    claim_label_decode.append(2)
                 else:
                     print(label)
                     print("claim label error")
@@ -267,30 +267,22 @@ def get_result(target, preds, mode):
     sorted_target = sorted(Counter(target).items())
     sorted_preds = sorted(Counter(preds).items())
 
-    logging.info("ground: (0, {:d}), (1, {:d}), (2, {:d}) ".format(sorted_target[0][1], sorted_target[1][1],
+    print('ground:')
+    for item in sorted_target:
+        print(item)
+
+    print('predicts:')
+    for item in sorted_preds:
+        print(item)
+
+    '''
+    print("ground: (0, {:d}), (1, {:d}), (2, {:d}) ".format(sorted_target[0][1], sorted_target[1][1],
                                                                    sorted_target[2][1]))
-    logging.info("ground: (0, {:d}), (1, {:d}), (2, {:d}) ".format(sorted_preds[0][1], sorted_preds[1][1],
+    print("predicts: (0, {:d}), (1, {:d}), (2, {:d}) ".format(sorted_preds[0][1], sorted_preds[1][1],
                                                                    sorted_preds[2][1]))
-
-    '''
-    if len(sorted_target) == 3:
-        logging.info("ground: (0, {:d}), (1, {:d}), (2, {:d}) ".format(sorted_target[0][1], sorted_target[1][1],
-                                                                   sorted_target[2][1]))
-    elif len(sorted_target) == 2:
-        logging.info("ground: (0, {:d}), (1, {:d})".format(sorted_target[0][1], sorted_target[1][1]))
-    else:
-        logging.info("ground: (0, {:d})".format(sorted_target[0][1]))
-
-    if len(sorted_preds) == 3:
-        logging.info("ground: (0, {:d}), (1, {:d}), (2, {:d}) ".format(sorted_preds[0][1], sorted_preds[1][1],
-                                                                       sorted_preds[2][1]))
-    elif len(sorted_preds) == 2:
-        logging.info("ground: (0, {:d}), (1, {:d})".format(sorted_preds[0][1], sorted_preds[1][1]))
-    else:
-        logging.info("ground: (0, {:d})".format(sorted_preds[0][1]))
     '''
 
-    target_names = ['驳回诉请', "支持诉请", '部分支持']
+    target_names = ['驳回诉请', '部分支持', "支持诉请",]
     # if mode == "test":
     if mode:
         print(classification_report(target, preds, target_names=target_names, digits=4))
@@ -543,9 +535,9 @@ def train(dataset, config: Data):
 if __name__ == '__main__':
     print(datetime.datetime.now())
     parser = argparse.ArgumentParser(description='Augmenting Deep Learning with Expert Prior Knowledge for Reasonable Charge Prediction')
-    parser.add_argument('--train', default="./data/70487train-fact.json")
-    parser.add_argument('--dev', default="./data/70487val-fact.json")
-    parser.add_argument('--test', default="./data/70487test-fact.json")
+    parser.add_argument('--train', default="./data/chaming-train.json")
+    parser.add_argument('--dev', default="./data/chaming-dev.json")
+    parser.add_argument('--test', default="./data/chaming-test.json")
     parser.add_argument('--status', default="train")
     parser.add_argument('--savemodel', default="")
     parser.add_argument('--savedset',  default="")
@@ -560,10 +552,10 @@ if __name__ == '__main__':
     parser.add_argument('--heads', default=4)
     parser.add_argument('--max_decoder_step', default=100)
 
-    parser.add_argument('--HP_iteration', default=30)
+    parser.add_argument('--HP_iteration', default=50)
     parser.add_argument('--HP_batch_size', default=16)
     parser.add_argument('--HP_hidden_dim', default=256)
-    parser.add_argument('--HP_dropout', default=0.2)
+    parser.add_argument('--HP_dropout', default=0.5)
     parser.add_argument('--HP_lstm_layer', default=1)
     parser.add_argument('--HP_lr', default=1e-3)
 
@@ -580,12 +572,13 @@ if __name__ == '__main__':
     config.HP_lr = args.HP_lr
     config.MAX_SENTENCE_LENGTH = args.MAX_SENTENCE_LENGTH
 
-    config.build_alphabet(args.train)
-    config.build_alphabet(args.dev)
-    config.build_alphabet(args.test)
+    config.build_word_alphabet(args.train)
+    config.build_word_alphabet(args.dev)
+    config.build_word_alphabet(args.test)
     config.fix_alphabet()
     print('word alphabet size:', config.word_alphabet_size)
 
+    config.build_word_pretrain_emb('data/word2vec.dim200.txt')
     print("\nLoading data...")
     train_data = load_data(args.train, config)
     valid_data = load_data(args.dev, config)
