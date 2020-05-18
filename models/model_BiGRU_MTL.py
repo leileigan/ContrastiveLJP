@@ -73,7 +73,7 @@ class DocEncoder(nn.Module):
 
     def forward(self, input_x, input_sentences_len):
 
-        word_embeds = self.word_embedding_layer.forward(input_x)
+        word_embeds = self.word_embeddings_layer.forward(input_x)
         hidden = None
         lstm1_out, hidden = self.lstm1.forward(word_embeds, hidden) # [batch_size, max_sequence_lens, hidden_dim]
         lstm1_out = self.lstm_dropout.forward(lstm1_out)
