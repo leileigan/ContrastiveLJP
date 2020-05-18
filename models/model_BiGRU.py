@@ -153,7 +153,6 @@ class LawModel(nn.Module):
         self.nll_loss = torch.nn.NLLLoss(ignore_index=-1, size_average=True)
 
         if config.HP_gpu:
-            self.word_embeddings_layer = self.word_embeddings_layer.cuda()
             self.doc_encoder = self.doc_encoder.cuda()
             # self.doc_dropout = self.doc_dropout.cuda()
 
