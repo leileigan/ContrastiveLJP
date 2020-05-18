@@ -23,6 +23,18 @@ from torch.nn.utils.rnn import pack_sequence, pad_sequence
 from scipy import stats
 import numpy as np
 
+SEED_NUM = 2020
+torch.manual_seed(SEED_NUM)
+random.seed(SEED_NUM)
+np.random.seed(SEED_NUM)
+
+
+def lr_decay(optimizer, epoch, decay_rate, init_lr):
+    lr = init_lr * ((1 - decay_rate) ** epoch)
+    print(" Learning rate is setted as:", lr)
+    for param_group in optimizer.param_groups:
+        param_group['lr'] = lr
+    return optimizer
 
 def process_data(data):
 # doc_word_ids, sentences_num, doc_sentence_lens,  claims, claims_num, claims_len, fact_labels, claims_labels
@@ -329,7 +341,7 @@ def train(dataset, config: Data):
         epoch_start = time.time()
         temp_start = epoch_start
         print("Epoch: %s/%s" % (idx, config.HP_iteration))
-
+        optimizer = lr_decay(optimizer, idx, config.HP_lr_decay, config.HP_lr)
         sample_loss = 0
         sample_claim_loss = 0
         sample_fact_loss = 0
@@ -417,7 +429,7 @@ if __name__ == '__main__':
     parser.add_argument('--savemodel', default="")
     parser.add_argument('--savedset', default="")
 
-    parser.add_argument('--word_emb_dim', default=300)
+    parser.add_argument('--word_emb_dim', default=200)
     parser.add_argument('--embedding_dense_dim', default=300)
     parser.add_argument('--fact_edim', default=300)
     parser.add_argument('--MAX_SENTENCE_LENGTH', default=250)
@@ -428,8 +440,8 @@ if __name__ == '__main__':
     parser.add_argument('--heads', default=4)
     parser.add_argument('--max_decoder_step', default=100)
 
-    parser.add_argument('--HP_iteration', default=30)
-    parser.add_argument('--HP_batch_size', default=64)
+    parser.add_argument('--HP_iteration', default=50)
+    parser.add_argument('--HP_batch_size', default=16)
     parser.add_argument('--HP_hidden_dim', default=256)
     parser.add_argument('--HP_dropout', default=0.2)
     parser.add_argument('--HP_lstmdropout', default=0.5)
@@ -448,11 +460,13 @@ if __name__ == '__main__':
     config.HP_lr = args.HP_lr
     config.MAX_SENTENCE_LENGTH = args.MAX_SENTENCE_LENGTH
 
-    config.build_alphabet(args.train)
-    config.build_alphabet(args.dev)
-    config.build_alphabet(args.test)
+    config.build_word_alphabet(args.train)
+    config.build_word_alphabet(args.dev)
+    config.build_word_alphabet(args.test)
     config.fix_alphabet()
     print('word alphabet size:', config.word_alphabet_size)
+
+    config.build_word_pretrain_emb('data/word2vec.dim200.txt')
 
     print("\nLoading data...")
     train_data = load_data(args.train, config)
