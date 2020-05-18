@@ -93,9 +93,9 @@ class LawModel(nn.Module):
         self.doc_encoder = DocEncoder(config)
 
         self.fact_dense = torch.nn.Linear(config.HP_hidden_dim, 512)
+        self.fact_drop = torch.nn.Dropout(config.HP_lstmdropout)
         self.fact_activation = torch.nn.ReLU()
         self.fact_classifier = torch.nn.Linear(512, config.fact_num)
-        self.fact_drop = torch.nn.Dropout(config.HP_lstmdropout)
         self.fact_sigmoid = torch.nn.Sigmoid()
 
         self.claim_classifier = torch.nn.Linear(config.HP_hidden_dim, 3)
