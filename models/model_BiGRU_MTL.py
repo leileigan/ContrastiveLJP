@@ -132,6 +132,7 @@ class LawModel(nn.Module):
         _, claim_predicts = torch.max(claim_log_softmax, dim=1)
 
         fact_representation = self.fact_dense(doc_rep)  # [batch_size, hidden_dim] -> [batch_size, fact_num]
+        fact_representation = self.fact_drop(fact_representation)
         fact_logits = self.fact_classifier(self.fact_activation(fact_representation))
         fact_predicts_prob = self.fact_sigmoid(fact_logits)
         loss_fact = self.bce_loss(fact_predicts_prob, input_fact)
