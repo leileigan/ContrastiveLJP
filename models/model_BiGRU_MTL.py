@@ -105,8 +105,9 @@ class LawModel(nn.Module):
         if config.HP_gpu:
             self.doc_encoder = self.doc_encoder.cuda()
 
-            self.fact_classifier = self.fact_classifier.cuda()
+            self.fact_dense = self.fact_dense.cuda()
             self.fact_activation = self.fact_activation.cuda()
+            self.fact_classifier = self.fact_classifier.cuda()
             self.fact_drop = self.fact_drop.cuda()
             self.fact_sigmoid = self.fact_sigmoid.cuda()
 
