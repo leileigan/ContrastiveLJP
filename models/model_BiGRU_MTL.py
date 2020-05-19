@@ -143,7 +143,7 @@ class LawModel(nn.Module):
         avg_fact_emb = torch.sum(fact_emb, 1) / fact_num # [batch_size, fact_emb_size]
 
         doc_rep = torch.cat((doc_rep, avg_fact_emb), dim=1)
-        doc_rep = F.dropout(doc_rep, p=0.2)
+        doc_rep = F.dropout(doc_rep, p=0.0)
         claim_outputs = self.claim_classifier(doc_rep)  # [batch_size, 3]
         claim_log_softmax = F.log_softmax(claim_outputs, dim=1)
         loss_claim = self.nll_loss(claim_log_softmax, input_claims_y.long())
