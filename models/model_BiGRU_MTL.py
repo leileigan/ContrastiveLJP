@@ -99,7 +99,7 @@ class LawModel(nn.Module):
         self.fact_sigmoid = torch.nn.Sigmoid()
         self.fact_embedding = torch.nn.Embedding(config.fact_num, config.HP_hidden_dim)
 
-        self.claim_classifier = torch.nn.Linear(config.HP_hidden_dim * 2, 3)
+        self.claim_classifier = torch.nn.Linear(config.HP_hidden_dim, 3)
         self.claim_dropout = torch.nn.Dropout(0.2)
         self.bce_loss = torch.nn.BCELoss()
         self.nll_loss = torch.nn.NLLLoss(ignore_index=-1, size_average=True)
