@@ -4,7 +4,6 @@
 # @Contact : 11921071@zju.edu.cn
 
 import torch
-from transformers import * # (1*seq_len*768, 1*768) (sequence_encoding, pool_out)
 # from pytorch_pretrained_bert import * # 12 * 1 * seq_len * 768
 import datetime, argparse
 from utils.data import Data
@@ -173,7 +172,7 @@ def get_result(target, preds, mode):
     # if mode == "test":
     if mode:
         print(classification_report(target, preds, target_names=target_names, digits=4))
-    logging.info(classification_report(target, preds, target_names=target_names, digits=4))
+
     return micro_f1 + macro_f1
 
 
@@ -185,8 +184,6 @@ def get_fact_result(target, preds):
 
     micro_f1 = f1_score(target, preds, average="micro")
     print("fact results: val," + str("micro_f1 %.4f," % micro_f1) + str("macro_f1 %.4f," % macro_f1) + str(
-        "-macro_precision %.4f," % macro_precision) + str("-macro_recall %.4f" % macro_recall))
-    logging.info("fact results, val," + str("micro_f1 %.4f," % micro_f1) + str("macro_f1 %.4f," % macro_f1) + str(
         "-macro_precision %.4f," % macro_precision) + str("-macro_recall %.4f" % macro_recall))
 
 
@@ -325,7 +322,7 @@ def train(dataset, config: Data):
     if config.use_sgd:
         optimizer = optim.SGD(parameters, lr=config.HP_lr, momentum=config.HP_momentum)
     elif config.use_adam:
-        optimizer = optim.Adam(parameters, lr=config.HP_lr)
+        optimizer = optim.Adam(parameters, lr=config.HP_lr, weight_decay=0.01)
     elif config.use_bert:
         optimizer = optim.Adam(parameters, lr=5e-6)  # fine tuning
     else:
