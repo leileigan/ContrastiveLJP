@@ -322,7 +322,7 @@ def train(dataset, config: Data):
     if config.use_sgd:
         optimizer = optim.SGD(parameters, lr=config.HP_lr, momentum=config.HP_momentum)
     elif config.use_adam:
-        optimizer = optim.Adam(parameters, lr=config.HP_lr, weight_decay=0.01)
+        optimizer = optim.Adam(parameters, lr=config.HP_lr)
     elif config.use_bert:
         optimizer = optim.Adam(parameters, lr=5e-6)  # fine tuning
     else:
