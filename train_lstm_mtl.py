@@ -441,6 +441,7 @@ if __name__ == '__main__':
     parser.add_argument('--HP_lstmdropout', default=0.5)
     parser.add_argument('--HP_lstm_layer', default=1)
     parser.add_argument('--HP_lr', default=1e-3, type=float)
+    parser.add_argument('--HP_lr_decay', default=0.1, type=float)
 
     args = parser.parse_args()
 
@@ -453,6 +454,7 @@ if __name__ == '__main__':
     config.HP_lstm_layer = args.HP_lstm_layer
     config.HP_lr = args.HP_lr
     config.MAX_SENTENCE_LENGTH = args.MAX_SENTENCE_LENGTH
+    config.HP_lr_decay = args.HP_lr_decay
 
     config.build_word_alphabet(args.train)
     config.build_word_alphabet(args.dev)
