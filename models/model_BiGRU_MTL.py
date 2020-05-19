@@ -97,9 +97,10 @@ class LawModel(nn.Module):
         self.fact_activation = torch.nn.ReLU()
         self.fact_classifier = torch.nn.Linear(512, config.fact_num)
         self.fact_sigmoid = torch.nn.Sigmoid()
-        self.fact_embedding = torch.nn.Embedding(config.fact_num, 100)
+        self.fact_embedding = torch.nn.Embedding(config.fact_num, config.HP_hidden_dim)
 
-        self.claim_classifier = torch.nn.Linear(config.HP_hidden_dim + 100, 3)
+        self.claim_classifier = torch.nn.Linear(config.HP_hidden_dim * 2, 3)
+        self.claim_dropout = torch.nn.Dropout(0.2)
         self.bce_loss = torch.nn.BCELoss()
         self.nll_loss = torch.nn.NLLLoss(ignore_index=-1, size_average=True)
 
@@ -114,6 +115,7 @@ class LawModel(nn.Module):
             self.fact_embedding = self.fact_embedding.cuda()
 
             self.claim_classifier = self.claim_classifier.cuda()
+            self.claim_dropout = self.claim_dropout.cuda()
             self.bce_loss = self.bce_loss.cuda()
             self.nll_loss = self.nll_loss.cuda()
 
@@ -142,8 +144,8 @@ class LawModel(nn.Module):
         fact_emb = fact_predicts_prob.unsqueeze(2) * fact_emb
         avg_fact_emb = torch.sum(fact_emb, 1) / fact_num # [batch_size, fact_emb_size]
 
-        doc_rep = torch.cat((doc_rep, avg_fact_emb), dim=1)
-        doc_rep = F.dropout(doc_rep, p=0.0)
+        doc_rep = doc_rep + avg_fact_emb
+        doc_rep = self.claim_dropout.forward(doc_rep)
         claim_outputs = self.claim_classifier(doc_rep)  # [batch_size, 3]
         claim_log_softmax = F.log_softmax(claim_outputs, dim=1)
         loss_claim = self.nll_loss(claim_log_softmax, input_claims_y.long())
