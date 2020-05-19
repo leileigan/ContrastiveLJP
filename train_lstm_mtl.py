@@ -15,7 +15,6 @@ from models.model_BiGRU_MTL import LawModel
 import sys, json
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import f1_score, precision_score, recall_score
-import tensorflow as tf
 from sklearn.metrics import classification_report
 import joblib
 import jieba
@@ -159,8 +158,6 @@ def get_result(target, preds, mode):
 
     micro_f1 = f1_score(target, preds, average="micro")
     print(("%s," % mode) + str("micro_f1 %.4f," % micro_f1) + str("macro_f1 %.4f," % macro_f1) + str(
-        "-macro_precision %.4f," % macro_precision) + str("-macro_recall %.4f" % macro_recall))
-    logging.info("val," + str("micro_f1 %.4f," % micro_f1) + str("macro_f1 %.4f," % macro_f1) + str(
         "-macro_precision %.4f," % macro_precision) + str("-macro_recall %.4f" % macro_recall))
 
     from collections import Counter
@@ -446,7 +443,7 @@ if __name__ == '__main__':
     parser.add_argument('--HP_dropout', default=0.2)
     parser.add_argument('--HP_lstmdropout', default=0.5)
     parser.add_argument('--HP_lstm_layer', default=1)
-    parser.add_argument('--HP_lr', default=1e-3)
+    parser.add_argument('--HP_lr', default=1e-3, type=float)
 
     args = parser.parse_args()
 
