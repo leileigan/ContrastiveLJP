@@ -21,6 +21,15 @@ import numpy as np
 import logging, os, codecs
 import ast
 
+
+def lr_decay(optimizer, epoch, decay_rate, init_lr):
+    lr = init_lr * ((1 - decay_rate) ** epoch)
+    print(" Learning rate is setted as:", lr)
+    for param_group in optimizer.param_groups:
+        param_group['lr'] = lr
+    return optimizer
+
+
 def process_data(data):
 # doc_word_ids, doc_sentence_lens,  claims, claims_num, claims_len, claims_type, fact_labels, claims_labels
     doc_word_ids = []
@@ -71,87 +80,6 @@ def get_claim_type(claim):
         claim_type = '其他'
     return claim_type
 
-def load_cases(path, config:Data):
-    claims = []
-    claims_num = []
-    claims_len = []
-    claims_type = []
-    claims_type_dic = {}
-
-    doc_word_ids = []
-    doc_sentence_nums = []
-    doc_sentences_lens = []
-
-    fact_labels = []
-    claims_labels = []
-
-    for file in os.listdir(path):
-        lines = codecs.open(path + '/' + file, 'r', 'utf-8').readlines()
-        fact_label_decode = []
-        claim_label_decode = []
-        for idx, line in enumerate(lines):
-            if line.strip() == '======chaming=======':
-                chaming_line = lines[idx + 1].strip()
-                chaming_cut = jieba.cut(chaming_line)
-                chaming_cut_list = list(chaming_cut)
-                chaming_ids = [config.word_alphabet.get_index(word) for word in chaming_cut_list]
-                doc_sentences_lens.append(len(chaming_cut_list))
-                doc_word_ids.append(chaming_ids)
-
-            if line.strip() == '======suqiu-split=======':
-                claims_line = lines[idx + 1].strip()
-                claims_split = ast.literal_eval(claims_line)
-                claims_sequences = []
-                cur_claim_types = []
-                for claim in claims_split:
-                    claim_cut = jieba.cut(claim)
-                    claim_id = [config.word_alphabet.get_index(word) for word in claim_cut]
-                    claims_sequences.append(claim_id)
-                    cur_claim_type = get_claim_type(claim[1:-1])
-                    cur_claim_types.append(cur_claim_type)
-                    claims_type_dic[cur_claim_type] = claims_type_dic[cur_claim_type] + 1 if cur_claim_type in claims_type_dic else 1
-
-                claims_len.append([len(x) for x in claims_sequences])
-                claims.append(claims_sequences)
-                claims_num.append(len(claims_split))
-                claims_type.append(cur_claim_types)
-
-            if line.strip() == '======suqiu-labels=======':
-                claims_labels_sample = ast.literal_eval(lines[idx + 1].strip())
-                for label in claims_labels_sample:
-                    if label == '驳回':
-                        claim_label_decode.append(0)
-                    elif label == '部分支持':
-                        claim_label_decode.append(1)
-                    elif label == '支持':
-                        claim_label_decode.append(2)
-                    else:
-                        print(label)
-                        print("claim label error!")
-
-                claims_labels.append(claim_label_decode)
-            if line.strip() == '======factlabels=======':
-                fact_labels_sample = ast.literal_eval(lines[idx + 1].strip())
-                for fact in config.facts:
-                    label = 0
-                    if fact_labels_sample[fact] != 0:
-                        label = 1
-                    fact_label_decode.append(label)
-
-                fact_labels.append(fact_label_decode)
-
-    print('doc word ids len:', len(doc_word_ids))
-    print('doc sentences len:', len(doc_sentences_lens))
-    print('claims len:', len(claims))
-    print('claims num len:', len(claims_num))
-    print('claims len len:', len(claims_len))
-    print('claims type len:', len(claims_type))
-    print('fact labels len:', len(fact_labels))
-    print('claims labels len:', len(claims_labels))
-
-    data = list(zip(doc_word_ids, doc_sentences_lens, claims, claims_num, claims_len, claims_type,
-                    fact_labels, claims_labels))
-    return data
 
 def load_data(path, config: Data):
     with open(path, 'r', encoding="utf-8") as load_f:
@@ -374,23 +302,14 @@ def evaluate(model, dataset, name):
 
         input_x_batch, claims_labels_batch, fact_labels_batch, input_sentences_len_batch, claims_type \
             = generate_batch_instance(batch_instances, config.HP_gpu)
-        try:
-            claim_loss, fact_loss, batch_fact_predicts, batch_claim_predicts = model.neg_log_likelihood_loss(
-            input_x_batch, input_sentences_len_batch, fact_labels_batch, claims_labels_batch, claims_type)
-            loss = claim_loss + fact_loss
-            total_loss += loss.data
-            total_claim_loss += claim_loss.data
-            total_fact_loss += fact_loss.data
 
-            claim_predicts.extend(batch_claim_predicts.cpu().tolist())
-            fact_predicts.extend(batch_fact_predicts.cpu().tolist())
-            ground_claim_labels.extend(claims_labels_batch.cpu().tolist())
-            ground_fact_labels.extend(fact_labels_batch.cpu().tolist())
-        except:
-            print('input x:', input_x_batch)
-            print('claim labels:', claims_labels_batch)
-            print('fact labels:', fact_labels_batch)
-            print('input sentences len:', input_sentences_len_batch)
+        batch_fact_predicts, batch_claim_predicts = model.forward(
+        input_x_batch, input_sentences_len_batch, fact_labels_batch, claims_labels_batch, claims_type)
+
+        claim_predicts.extend(batch_claim_predicts.cpu().tolist())
+        fact_predicts.extend(batch_fact_predicts.cpu().tolist())
+        ground_claim_labels.extend(claims_labels_batch.cpu().tolist())
+        ground_fact_labels.extend(fact_labels_batch.cpu().tolist())
 
     score = get_result(ground_claim_labels, claim_predicts, name)
 
@@ -451,6 +370,11 @@ def train(dataset, config: Data):
     best_dev = -1
 
     for idx in range(config.HP_iteration):
+        epoch_start = time.time()
+        temp_start = epoch_start
+        print("Epoch: %s/%s" % (idx, config.HP_iteration))
+        optimizer = lr_decay(optimizer, idx, config.HP_lr_decay, config.HP_lr)
+
         total_loss = 0
         total_claim_loss = 0
         total_fact_loss = 0
@@ -458,10 +382,6 @@ def train(dataset, config: Data):
         sample_loss = 0
         sample_claim_loss = 0
         sample_fact_loss = 0
-
-        epoch_start = time.time()
-        temp_start = epoch_start
-        print("Epoch: %s/%s" % (idx, config.HP_iteration))
 
         random.shuffle(train_data_set)
 
@@ -542,9 +462,9 @@ if __name__ == '__main__':
     parser.add_argument('--savemodel', default="")
     parser.add_argument('--savedset',  default="")
 
-    parser.add_argument('--word_emb_dim', default=300)
+    parser.add_argument('--word_emb_dim', default=200)
     parser.add_argument('--embedding_dense_dim', default=300)
-    parser.add_argument('--fact_edim', default=300)
+    parser.add_argument('--fact_edim', default=100)
     parser.add_argument('--MAX_SENTENCE_LENGTH', default=250)
     parser.add_argument('--fact_num', default=12)
     parser.add_argument('--facts', default="是否夫妻共同债务,是否物权担保,是否存在还款行为,是否约定利率,是否约定借款期限,是否约定保证期间,是否保证人不承担担保责任,是否保证人担保,是否约定违约条款,是否约定还款期限,是否超过诉讼时效,是否借款成立")
@@ -555,10 +475,11 @@ if __name__ == '__main__':
     parser.add_argument('--HP_iteration', default=50)
     parser.add_argument('--HP_batch_size', default=16)
     parser.add_argument('--HP_hidden_dim', default=256)
-    parser.add_argument('--HP_dropout', default=0.5)
+    parser.add_argument('--HP_dropout', default=0.2)
+    parser.add_argument('--HP_lstmdropout', default=0.5)
     parser.add_argument('--HP_lstm_layer', default=1)
-    parser.add_argument('--HP_lr', default=1e-3)
-
+    parser.add_argument('--HP_lr', default=1e-3, type=float)
+    parser.add_argument('--HP_lr_decay', default=0.05, type=float)
 
     args = parser.parse_args()
 
@@ -571,6 +492,7 @@ if __name__ == '__main__':
     config.HP_lstm_layer = args.HP_lstm_layer
     config.HP_lr = args.HP_lr
     config.MAX_SENTENCE_LENGTH = args.MAX_SENTENCE_LENGTH
+    config.HP_lr_decay = args.HP_lr_decay
 
     config.build_word_alphabet(args.train)
     config.build_word_alphabet(args.dev)
@@ -579,6 +501,7 @@ if __name__ == '__main__':
     print('word alphabet size:', config.word_alphabet_size)
 
     config.build_word_pretrain_emb('data/word2vec.dim200.txt')
+
     print("\nLoading data...")
     train_data = load_data(args.train, config)
     valid_data = load_data(args.dev, config)
