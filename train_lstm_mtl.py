@@ -122,10 +122,12 @@ def load_data(path, config: Data):
             fact_label_decode = []
             claim_label_decode = []
             for fact in config.facts:
-                label = 0
-                if fact_label_sample[fact] != 0:
-                    label = 1
-                fact_label_decode.append(label)
+
+                if fact_label_sample[fact] == -1:
+                    fact_label_decode.append(2)
+                else:
+                    fact_label_decode.append(fact_label_sample[fact])
+
             for label in jsonContent[key]["claims_labels"]:
                 if label == "驳回":
                     claim_label_decode.append(0)
@@ -425,7 +427,7 @@ if __name__ == '__main__':
 
     parser.add_argument('--word_emb_dim', default=200)
     parser.add_argument('--embedding_dense_dim', default=300)
-    parser.add_argument('--fact_edim', default=300)
+    parser.add_argument('--fact_edim', default=100)
     parser.add_argument('--MAX_SENTENCE_LENGTH', default=250)
     parser.add_argument('--fact_num', default=12)
     parser.add_argument('--facts',
@@ -441,7 +443,7 @@ if __name__ == '__main__':
     parser.add_argument('--HP_lstmdropout', default=0.5)
     parser.add_argument('--HP_lstm_layer', default=1)
     parser.add_argument('--HP_lr', default=1e-3, type=float)
-    parser.add_argument('--HP_lr_decay', default=0.1, type=float)
+    parser.add_argument('--HP_lr_decay', default=0.05, type=float)
 
     args = parser.parse_args()
 
