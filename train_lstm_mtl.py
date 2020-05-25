@@ -20,12 +20,29 @@ import jieba
 from torch.nn.utils.rnn import pack_sequence, pad_sequence
 from scipy import stats
 import numpy as np
+import copy
 
 SEED_NUM = 2020
 torch.manual_seed(SEED_NUM)
 random.seed(SEED_NUM)
 np.random.seed(SEED_NUM)
 
+def save_data_setting(data, save_file):
+    new_data = copy.deepcopy(data)
+    ## remove input instances
+    new_data.train_texts = []
+    new_data.dev_texts = []
+    new_data.test_texts = []
+    new_data.raw_texts = []
+
+    new_data.train_Ids = []
+    new_data.dev_Ids = []
+    new_data.test_Ids = []
+    new_data.raw_Ids = []
+    ## save data settings
+    with open(save_file, 'wb') as fp:
+        pickle.dump(new_data, fp)
+    print("Data setting saved to file: ", save_file)
 
 def lr_decay(optimizer, epoch, decay_rate, init_lr):
     lr = init_lr * ((1 - decay_rate) ** epoch)
@@ -422,8 +439,8 @@ if __name__ == '__main__':
     parser.add_argument('--dev', default="./data/chaming-dev.json")
     parser.add_argument('--test', default="./data/chaming-test.json")
     parser.add_argument('--status', default="train")
-    parser.add_argument('--savemodel', default="")
-    parser.add_argument('--savedset', default="")
+    parser.add_argument('--savemodel', default="savemodels/lstm_mtl")
+    parser.add_argument('--savedset', default="savemodels/lstm_mtl")
 
     parser.add_argument('--word_emb_dim', default=200)
     parser.add_argument('--embedding_dense_dim', default=300)
@@ -457,6 +474,8 @@ if __name__ == '__main__':
     config.HP_lr = args.HP_lr
     config.MAX_SENTENCE_LENGTH = args.MAX_SENTENCE_LENGTH
     config.HP_lr_decay = args.HP_lr_decay
+    config.save_model_dir = args.savemodel
+    config.save_dset_dir = args.savedset
 
     config.build_word_alphabet(args.train)
     config.build_word_alphabet(args.dev)
@@ -483,5 +502,6 @@ if __name__ == '__main__':
     pass
 
     config.show_data_summary()
+    save_data_setting(config, config.save_dset_dir + '.dset')
     print("\nTraining...")
     train(data_dict, config)
