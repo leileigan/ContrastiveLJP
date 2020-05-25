@@ -27,18 +27,9 @@ torch.manual_seed(SEED_NUM)
 random.seed(SEED_NUM)
 np.random.seed(SEED_NUM)
 
-def save_data_setting(data, save_file):
+def save_data_setting(data: Data, save_file):
     new_data = copy.deepcopy(data)
     ## remove input instances
-    new_data.train_texts = []
-    new_data.dev_texts = []
-    new_data.test_texts = []
-    new_data.raw_texts = []
-
-    new_data.train_Ids = []
-    new_data.dev_Ids = []
-    new_data.test_Ids = []
-    new_data.raw_Ids = []
     ## save data settings
     with open(save_file, 'wb') as fp:
         pickle.dump(new_data, fp)
@@ -50,6 +41,13 @@ def lr_decay(optimizer, epoch, decay_rate, init_lr):
     for param_group in optimizer.param_groups:
         param_group['lr'] = lr
     return optimizer
+
+def load_data_setting(save_file):
+    with open(save_file, 'rb') as fp:
+        data = pickle.load(fp)
+    print("Data setting loaded from file: ", save_file)
+    data.show_data_summary()
+    return data
 
 def process_data(data):
 # doc_word_ids, sentences_num, doc_sentence_lens,  claims, claims_num, claims_len, fact_labels, claims_labels
