@@ -92,12 +92,12 @@ class LawModel(nn.Module):
 
         self.doc_encoder = DocEncoder(config)
 
+        self.fact_num = config.fact_num
         self.fact_dense = torch.nn.Linear(config.HP_hidden_dim, 512)
         self.fact_drop = torch.nn.Dropout(config.HP_lstmdropout)
         self.fact_activation = torch.nn.ReLU()
-        self.fact_classifier = torch.nn.Linear(512, config.fact_num)
-        self.fact_sigmoid = torch.nn.Sigmoid()
-        self.fact_embedding = torch.nn.Embedding(config.fact_num, config.HP_hidden_dim)
+        self.fact_classifier = torch.nn.Linear(512, config.fact_num * 3)
+        # self.fact_embedding = torch.nn.Embedding(config.fact_num, self.fact_embed_dim)
 
         self.claim_classifier = torch.nn.Linear(config.HP_hidden_dim, 3)
         self.claim_dropout = torch.nn.Dropout(0.2)
@@ -111,8 +111,6 @@ class LawModel(nn.Module):
             self.fact_activation = self.fact_activation.cuda()
             self.fact_classifier = self.fact_classifier.cuda()
             self.fact_drop = self.fact_drop.cuda()
-            self.fact_sigmoid = self.fact_sigmoid.cuda()
-            self.fact_embedding = self.fact_embedding.cuda()
 
             self.claim_classifier = self.claim_classifier.cuda()
             self.claim_dropout = self.claim_dropout.cuda()
@@ -133,18 +131,15 @@ class LawModel(nn.Module):
         doc_rep = self.doc_encoder.forward(input_x,  input_sentences_lens) # [batch_size, max_sequence_lens, hidden_dim]
 
         fact_representation = self.fact_dense(doc_rep)  # [batch_size, hidden_dim] -> [batch_size, fact_num]
-        fact_num = fact_representation.size(1)
+        batch_size = fact_representation.size(0)
         fact_representation = self.fact_drop(fact_representation)
         fact_logits = self.fact_classifier(self.fact_activation(fact_representation)) # [batch_size, fact_num]
-        fact_predicts_prob = self.fact_sigmoid(fact_logits)
-        loss_fact = self.bce_loss(fact_predicts_prob, input_fact)
-        fact_predicts = torch.round(fact_predicts_prob)  # [batch_size, fact_num]
+        fact_logits = fact_logits.view(batch_size * self.fact_num, -1)
+        fact_log_softmax = F.log_softmax(fact_logits, dim=1)
+        loss_fact = self.nll_loss(fact_log_softmax, input_fact.view(batch_size * self.fact_num).long())
+        _, fact_predicts = torch.max(fact_log_softmax, dim=1)  # [batch_size, fact_num]
+        fact_predicts = fact_predicts.view(batch_size, -1)
 
-        fact_emb = self.fact_embedding.forward(fact_predicts.long()) # [batch_size, fact_num, fact_emb_size]
-        fact_emb = fact_predicts_prob.unsqueeze(2) * fact_emb
-        avg_fact_emb = torch.sum(fact_emb, 1) / fact_num # [batch_size, fact_emb_size]
-
-        doc_rep = doc_rep + avg_fact_emb
         doc_rep = self.claim_dropout.forward(doc_rep)
         claim_outputs = self.claim_classifier(doc_rep)  # [batch_size, 3]
         claim_log_softmax = F.log_softmax(claim_outputs, dim=1)
