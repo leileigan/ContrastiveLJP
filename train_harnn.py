@@ -289,7 +289,7 @@ if __name__ == '__main__':
     parser.add_argument('--heads', default=4)
     parser.add_argument('--max_decoder_step', default=100)
 
-    parser.add_argument('--HP_iteration', default=100)
+    parser.add_argument('--HP_iteration', default=30)
     parser.add_argument('--HP_batch_size', default=128)
     parser.add_argument('--HP_hidden_dim', default=256)
     parser.add_argument('--HP_dropout', default=0.2)
