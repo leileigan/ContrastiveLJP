@@ -117,6 +117,8 @@ ENV/
 
 # mypy
 .mypy_cache/
+models/__pycache__/
+utils/__pycache__/
 
 # Generated files
 /fairseq/temporal_convolution_tbc
