@@ -82,47 +82,19 @@ def get_result(accu_target, accu_preds, law_target, law_preds, term_target, term
     accu_macro_precision = precision_score(accu_target, accu_preds, average="macro")
     accu_macro_recall = recall_score(accu_target, accu_preds, average="macro")
 
-    accu_micro_f1 = f1_score(accu_target, accu_preds, average="micro")
-    accu_micro_precision = precision_score(accu_target, accu_preds, average="micro")
-    accu_micro_recall = recall_score(accu_target, accu_preds, average="micro")
-
     law_macro_f1 = f1_score(law_target, law_preds, average="macro")
     law_macro_precision = precision_score(law_target, law_preds, average="macro")
     law_macro_recall = recall_score(law_target, law_preds, average="macro")
-
-    law_micro_f1 = f1_score(law_target, law_preds, average="micro")
-    law_micro_precision = precision_score(law_target, law_preds, average="micro")
-    law_micro_recall = recall_score(law_target, law_preds, average="micro")
 
     term_macro_f1 = f1_score(term_target, term_preds, average="macro")
     term_macro_precision = precision_score(term_target, term_preds, average="macro")
     term_macro_recall = recall_score(term_target, term_preds, average="macro")
 
-    term_micro_f1 = f1_score(term_target, term_preds, average="micro")
-    term_micro_precision = precision_score(term_target, term_preds, average="micro")
-    term_micro_recall = recall_score(term_target, term_preds, average="micro")
+    print("Accu task: macro_f1:%.4f, macro_precision:%.4f, macro_recall:%.4f" % (accu_macro_f1, accu_macro_precision, accu_macro_recall))
+    print("Law task: macro_f1:%.4f, macro_precision:%.4f, macro_recall:%.4f" % (law_macro_f1, law_macro_precision, law_macro_recall))
+    print("Term task: macro_f1:%.4f, macro_precision:%.4f, macro_recall:%.4f" % (term_macro_f1, term_macro_precision, term_macro_recall))
 
-    print("Accu task: micro_f1: %.4f, micro_precision: %.4f, micro_recall: %.4f, macro_f1:%.4f, macro_precision:%.4f, macro_recall:%.4f" % 
-    (accu_micro_f1, accu_micro_precision, accu_micro_recall, accu_macro_f1, accu_macro_precision, accu_macro_recall))
-
-    print("Law task: micro_f1: %.4f, micro_precision: %.4f, micro_recall: %.4f, macro_f1:%.4f, macro_precision:%.4f, macro_recall:%.4f" % 
-    (law_micro_f1, law_micro_precision, law_micro_recall, law_macro_f1, law_macro_precision, law_macro_recall))
-    
-    print("Term task: micro_f1: %.4f, micro_precision: %.4f, micro_recall: %.4f, macro_f1:%.4f, macro_precision:%.4f, macro_recall:%.4f" % 
-    (term_micro_f1, term_micro_precision, term_micro_recall, term_macro_f1, term_macro_precision, term_macro_recall))
-
-    return accu_micro_f1 + accu_macro_f1 + law_micro_f1 + law_macro_f1 + term_micro_f1 + term_macro_f1
-
-
-def get_fact_result(target, preds):
-    # target = pd.DataFrame(np.argmax(np.array(target), axis=1), columns=["0"])
-    macro_f1 = f1_score(target, preds, average="macro")
-    macro_precision = precision_score(target, preds, average="macro")
-    macro_recall = recall_score(target, preds, average="macro")
-
-    micro_f1 = f1_score(target, preds, average="micro")
-    print("fact results: val," + str("micro_f1 %.4f," % micro_f1) + str("macro_f1 %.4f," % macro_f1) + str(
-        "-macro_precision %.4f," % macro_precision) + str("-macro_recall %.4f" % macro_recall))
+    return (accu_macro_f1 + law_macro_f1 + term_macro_f1) / 3
 
 
 def data_initialization(data, train_file, dev_file, test_file):
@@ -144,16 +116,16 @@ def evaluate(model, valid_dataloader, name):
     predicts_accu_y, predicts_law_y, predicts_term_y = [], [], []
 
     for batch_idx, datapoint in enumerate(valid_dataloader):
-            fact_list, accu_label_lists, law_label_lists, term_lists = datapoint
-            _, _, _, accu_preds, law_preds, term_preds = model.neg_log_likelihood_loss(fact_list, accu_label_lists,law_label_lists, term_lists, config.sent_len, config.doc_len)
+        fact_list, accu_label_lists, law_label_lists, term_lists = datapoint
+        _, _, _, accu_preds, law_preds, term_preds = model.neg_log_likelihood_loss(fact_list, accu_label_lists,law_label_lists, term_lists, config.sent_len, config.doc_len)
 
-            ground_accu_y.extend(accu_label_lists.tolist())
-            ground_law_y.extend(law_label_lists.tolist())
-            ground_term_y.extend(term_lists.tolist())
+        ground_accu_y.extend(accu_label_lists.tolist())
+        ground_law_y.extend(law_label_lists.tolist())
+        ground_term_y.extend(term_lists.tolist())
 
-            predicts_accu_y.extend(accu_preds.tolist())
-            predicts_law_y.extend(law_preds.tolist())
-            predicts_term_y.extend(term_preds.tolist())
+        predicts_accu_y.extend(accu_preds.tolist())
+        predicts_law_y.extend(law_preds.tolist())
+        predicts_term_y.extend(term_preds.tolist())
 
     accu_accuracy = accuracy_score(ground_accu_y, predicts_accu_y)
     law_accuracy = accuracy_score(ground_law_y, predicts_law_y)
