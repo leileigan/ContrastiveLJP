@@ -20,11 +20,13 @@ class Config:
     def __init__(self):
         self.MAX_SENTENCE_LENGTH = 250
         self.word_emb_dim = 200
-
         self.pretrain_word_embedding = None
+        self.word2id_dict = None
+
         self.accu_label_size = 119
         self.law_label_size = 103
         self.term_label_size = 12
+        self.law_relation_threshold = 0.3
 
         self.sent_len = 100
         self.doc_len = 15
