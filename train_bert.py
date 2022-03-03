@@ -251,9 +251,9 @@ def train(model, dataset, config: Config):
             term_loss = torch.sum(term_loss)
             loss = (accu_loss + term_loss + law_loss) / batch_size
             sample_loss += loss.data
-            sample_accu_loss += accu_loss.data
-            sample_law_loss += law_loss.data
-            sample_term_loss += term_loss.data
+            sample_accu_loss += accu_loss.data / batch_size
+            sample_law_loss += law_loss.data / batch_size
+            sample_term_loss += term_loss.data / batch_size
 
             ground_accu_y.extend(accu_label_lists.tolist())
             ground_law_y.extend(law_label_lists.tolist())
