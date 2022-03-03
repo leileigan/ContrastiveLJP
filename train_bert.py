@@ -23,7 +23,7 @@ from torch import nn
 from torch.utils.data.dataloader import DataLoader
 from torch.autograd import Variable
 
-from models.model_bert_lbk import LawModel, Config
+from models.model_BERT import LawModel, Config
 #from utils.functions import load_data
 from utils.optim import ScheduledOptim
 from data.dataset import load_dataset, CustomDataset, collate_qa_fn
