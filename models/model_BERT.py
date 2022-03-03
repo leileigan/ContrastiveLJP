@@ -1,166 +1,212 @@
-#-*- coding:utf-8 _*-
-# @Author: Leilei Gan
-# @Time: 2020/05/11
-# @Contact: 11921071@zju.edu.cn
+# -*- coding: utf-8 -*-
+# @Time    : 2020/4/26 3:33 下午
+# @Author  : Leilei Gan
+# @Contact : 11921071@zju.edu.cn
 
 import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
-import math, copy, time
-from transformers import *
 import datetime
-import utils.data
 import random
+from transformers import BertConfig, BertModel, BertTokenizer
+import sys
 
-BERT_MODEL_PATH = "/home/ganleilei/data/data/BertPreModels/chinese_L-12_H-768_A-12/"
+BERT_MODEL_PATH = "/mnt/data/ganleilei/chinese_L-12_H-768_A-12/"
 SEED_NUM = 2020
 torch.manual_seed(SEED_NUM)
 random.seed(SEED_NUM)
 np.random.seed(SEED_NUM)
 
+class Config(object):
 
-class ClaimEncoder(nn.Module):
-    def __init__(self, config: utils.data.Data, word_embedding_layer):
-        super(ClaimEncoder, self).__init__()
-        self.word_embedding_layer = word_embedding_layer
+    """配置参数"""
+    def __init__(self):
+        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')   # 设备
+        self.pad_size = 512                                              # 每句话处理成的长度(短填长切)
+        self.bert_path = '/data/home/ganleilei/bert/bert-base-chinese'
+        self.tokenizer = BertTokenizer.from_pretrained(self.bert_path)
+        self.hidden_size = 768
 
-        self.lstm = nn.LSTM(config.word_emb_dim, hidden_size=config.HP_hidden_dim // 2, num_layers=1, batch_first=True,
-                            bidirectional=True)
-        self.attn_p = nn.Parameter(torch.Tensor(config.HP_hidden_dim, 1))
-        nn.init.uniform_(self.attn_p, -0.1, 0.1)
+        self.MAX_SENTENCE_LENGTH = 250
+        self.word_emb_dim = 200
+        self.pretrain_word_embedding = None
+        self.word2id_dict = None
 
-    def forward(self, input_claims_x, input_claims_nums, input_claims_lens):
-        """
+        self.accu_label_size = 119
+        self.law_label_size = 103
+        self.term_label_size = 12
+        self.law_relation_threshold = 0.3
 
-        :param input_claims_x: [batch_size, max_claim_num, max_sentence_len]
-        :param input_claims_nums
-        :param input_claims_lens
-        :return:
-        """
-        word_embs = self.word_embedding_layer(input_claims_x)
-        batch_size, max_claim_num, max_sentence_len = input_claims_x.size()
-        lstm_input = word_embs.view(batch_size*max_claim_num, max_sentence_len, -1)
-        hidden = None
-        lstm_out, hidden = self.lstm.forward(lstm_input, hidden) # [batch_size * max_claim_num, max_sentence_len, hidden_dim]
-        attn_weights = F.softmax(torch.matmul(lstm_out, self.attn_p))
-        attn_outs = lstm_out * attn_weights
-        claim_outs = torch.sum(attn_outs, dim=1)
-        # [batch_size * max_claim_num, max_sentence_len, hidden_dim] -> [batch_size * max_claim_num, hidden_dim]
-        claim_outs = claim_outs.view(batch_size, max_claim_num, -1)
-        # [batch_size * max_claim_num, hidden_dim] -> [batch_size, max_claim_num, hidden_dim]
-        return claim_outs
+        self.sent_len = 100
+        self.doc_len = 15
+        #  hyperparameters
+        self.HP_iteration = 100
+        self.HP_batch_size = 128
+        self.HP_hidden_dim = 200
+        self.HP_dropout = 0.2
+        self.HP_lstmdropout = 0.5
+        self.HP_lstm_layer = 1
+        self.HP_bilstm = True
+        self.HP_gpu = True
+        self.HP_lr = 0.015
+        self.HP_lr_decay = 0.05
+        self.HP_clip = 5.0
+        self.HP_momentum = 0
+        self.bert_hidden_size = 768
 
-class DocEncoder(nn.Module):
-    def __init__(self, config: utils.data.Data):
-        super(DocEncoder, self).__init__()
-        print("Begin loading BERT model from path:", BERT_MODEL_PATH)
-        self.tokenizer = BertTokenizer.from_pretrained(BERT_MODEL_PATH)
-        self.bert_model = BertModel.from_pretrained(BERT_MODEL_PATH)
-        bert_params = list(self.bert_model.named_parameters())
-        for p in bert_params:
-            p[1].requires_grad = True
-        print("Finish loading BERT model...")
-        self.linear1 = nn.Linear(768, 256)
+        # optimizer
+        self.use_adam = True
+        self.use_bert = False
+        self.use_sgd = False
+        self.use_adadelta = False
+        self.use_warmup_adam = False
+        self.mode = 'train'
 
-        '''
-        self.attn_p = nn.Parameter(torch.Tensor(self.hidden_dim * 2, 1))
-        nn.init.uniform_(self.attn_p, -0.1, 0.1)
-        '''
+        self.save_model_dir = ""
+        self.save_dset_dir = ""
 
-    def forward(self, word_text, input_x, input_sentences_len):
+        self.hops = 3
+        self.heads = 4
 
-        pool_outs = self.load_bert_char_embedding(word_text, input_sentences_len)
-        outs = self.linear1.forward(pool_outs)
-        return outs # batch_size, hidden_dim
+        self.filters_size = [1, 3, 4, 5]
+        self.num_filters = [50, 50, 50, 50]
+    
+    def show_data_summary(self):
+        print("DATA SUMMARY START:")
+        print("     MAX SENTENCE LENGTH: %s" % (self.MAX_SENTENCE_LENGTH))
+        print("     Word embedding size: %s" % (self.word_emb_dim))
 
-    def load_bert_char_embedding(self, word_text, word_seq_lens):
-        max_len = max(word_seq_lens)
-        max_len = min(max_len, 500)
-        text = [' '.join(['[CLS]'] + item[:max_len] + ['[SEP]'] + (max_len - len(item[:max_len])) * ['[PAD]']) for item in word_text]
-        tokenized_text = [self.tokenizer.tokenize(item) for item in text]
-        indexed_token_ids = [self.tokenizer.convert_tokens_to_ids(item) for item in tokenized_text]
-        tokens_tensor = torch.tensor(indexed_token_ids).cuda()
+        print("     Accu label     size: %s" % (self.accu_label_size))
+        print("     Law label     size: %s" % (self.law_label_size))
+        print("     Term label     size: %s" % (self.term_label_size))
 
-        # with torch.no_grad():
-        _, pool_out = self.bert_model(tokens_tensor)
+        print("     Hyperpara  iteration: %s" % (self.HP_iteration))
+        print("     Hyperpara  batch size: %s" % (self.HP_batch_size))
+        print("     Hyperpara          lr: %s" % (self.HP_lr))
+        print("     Hyperpara    lr_decay: %s" % (self.HP_lr_decay))
+        print("     Hyperpara     HP_clip: %s" % (self.HP_clip))
+        print("     Hyperpara    momentum: %s" % (self.HP_momentum))
+        print("     Hyperpara  hidden_dim: %s" % (self.HP_hidden_dim))
+        print("     Hyperpara     dropout: %s" % (self.HP_dropout))
+        print("     Hyperpara  lstm_layer: %s" % (self.HP_lstm_layer))
+        print("     Hyperpara      bilstm: %s" % (self.HP_bilstm))
+        print("     Hyperpara         GPU: %s" % (self.HP_gpu))
+        print("     Filter size:        :  %s" % (self.filters_size))
+        print("     Number filters      :  %s" % (self.num_filters))
+        print("DATA SUMMARY END.")
+        sys.stdout.flush()
 
-        return pool_out
 
+    def load_word_pretrain_emb(self, emb_path):
+        self.pretrain_word_embedding = np.cast[np.float32](np.load(emb_path))
+        self.word_emb_dim = self.pretrain_word_embedding.shape[1]
+        print("word embedding size:", self.pretrain_word_embedding.shape)
 
 class LawModel(nn.Module):
 
-    def __init__(self, config: utils.data.Data):
+    def __init__(self, config):
         super(LawModel, self).__init__()
-        self.doc_encoder = DocEncoder(config)
-        self.doc_dropout = nn.Dropout(config.HP_lstmdropout)
+        self.config = config
+        self.bert_config = BertConfig.from_pretrained(config.bert_path, output_hidden_states=False)
+        self.bert = BertModel.from_pretrained(config.bert_path, config=self.bert_config)
+        for param in self.bert.parameters():
+            param.requires_grad = True
 
-        self.fact_classifier = torch.nn.Linear(config.HP_hidden_dim, config.fact_num)
-        self.fact_sigmoid = torch.nn.Sigmoid()
+        self.accu_classifier = torch.nn.Linear(config.hidden_size, config.accu_label_size)
+        self.accu_loss = torch.nn.NLLLoss()
+        
+        self.law_classifier = torch.nn.Linear(config.hidden_size, config.law_label_size)
+        self.law_loss = torch.nn.NLLLoss()
+        
+        self.term_classifier = torch.nn.Linear(config.hidden_size, config.term_label_size)
+        self.term_loss = torch.nn.NLLLoss()
 
-        self.claim_classifier = torch.nn.Linear(config.HP_hidden_dim, 3)
-        self.bce_loss = torch.nn.BCELoss()
-        self.nll_loss = torch.nn.NLLLoss(ignore_index=-1, size_average=True)
 
-        if config.HP_gpu:
-            self.doc_encoder = self.doc_encoder.cuda()
-            self.doc_dropout = self.doc_dropout.cuda()
-
-            self.fact_classifier = self.fact_classifier.cuda()
-            self.fact_sigmoid = self.fact_sigmoid.cuda()
-
-            self.claim_classifier = self.claim_classifier.cuda()
-            self.bce_loss = self.bce_loss.cuda()
-            self.nll_loss = self.nll_loss.cuda()
-
-    def neg_log_likelihood_loss(self, word_text, input_x,  input_sentences_lens, input_fact, input_claims_y):
+    def classifier_layer(self, doc_out, accu_labels, law_labels, term_labels): #
         """
-
-        :param input_x:
-        :param input_sentences_nums
-        :param input_sentences_lens:
-        :param input_fact: [batch_size, fact_num]
-        :param input_claims_y: [batch_size]
-        :return:
+        :param doc_out: [batch_size, 2 * hidden_dim]
+        :param accu_labels: [batch_size]
+        :param law_labels: [batch_size]
+        :param term_labels: [batch_size]
         """
-        doc_rep = self.doc_encoder.forward(word_text, input_x, input_sentences_lens) # [batch_size, max_sequence_lens, hidden_dim]
-        doc_rep = self.doc_dropout(doc_rep)
+        accu_logits = self.accu_classifier(doc_out)  # [batch_size, accu_label_size]
+        accu_probs = F.softmax(accu_logits, dim=-1)
+        accu_log_softmax = F.log_softmax(accu_logits, dim=-1)
+        accu_loss = self.accu_loss(accu_log_softmax, accu_labels)
+        _, accu_predicts = torch.max(accu_log_softmax, dim=-1) # [batch_size, accu_label_size]
+        
+        law_logits = self.law_classifier(doc_out)  # [batch_size, law_label_size]
+        law_probs = F.softmax(law_logits, dim=-1)
+        law_log_softmax = F.log_softmax(law_logits, dim=-1)
+        law_loss = self.law_loss(law_log_softmax, law_labels)
+        _, law_predicts = torch.max(law_log_softmax, dim=1) # [batch_size * max_claims_num]
+        
+        term_logits = self.term_classifier(doc_out)  # [batch_size, term_label_size]
+        term_probs = F.softmax(term_logits, dim=-1)
+        term_log_softmax = F.log_softmax(term_logits, dim=-1)
+        term_loss = self.term_loss(term_log_softmax, term_labels)
+        _, term_predicts = torch.max(term_log_softmax, dim=1) # [batch_size * max_claims_num]
 
-        claim_outputs = self.claim_classifier(doc_rep) # [batch_size, 3]
-        claim_log_softmax = torch.nn.functional.log_softmax(claim_outputs, dim=1)
-        loss_claim = self.nll_loss(claim_log_softmax, input_claims_y.long())
-        _, claim_predicts = torch.max(claim_log_softmax, dim=1)
+        return accu_predicts, accu_loss, law_predicts, law_loss, term_predicts, term_loss
 
-        '''
-        fact_logits = self.fact_classifier(doc_rep) # [batch_size, hidden_dim] -> [batch_size, fact_num]
-        fact_predicts_prob = self.fact_sigmoid(fact_logits)
-        loss_fact = self.bce_loss(fact_predicts_prob, input_fact)
-        fact_predicts = torch.round(fact_predicts_prob) # [batch_size, fact_num]
-        '''
+        #return accu_predicts, accu_log_softmax, law_predicts, law_log_softmax, term_predicts, term_log_softmax
 
-        return loss_claim, claim_predicts
+    def forward(self, fact_list, accu_labels, law_labels, term_labels):  #, input_sentences_lens, input_doc_len
+        """ 
+        Args:
+            input_facts: [batch_size, max_sent_num, max_sent_seq_len]
+            input_laws: [law_num, max_law_seq_len]
+            law_labels: [batch_size]
+            accu_labels : [batch_size]
+            term_labels : [batch_size]
+            input_sentences_lens : int 
+            input_doc_len : int 
 
+        Returns:
+            [type]: [description]
+        """
+        #x = self.x_given_bert(fact_list)
+        x = fact_list
+        context = x[0]  # 输入的句子
+        mask = x[2]  # 对padding部分进行mask，和句子一个size，padding部分用0表示，如：[1, 1, 1, 1, 0, 0]
+        outputs = self.bert(context, attention_mask=mask)
+        pooled = outputs.pooler_output
+        accu_predicts, accu_loss, law_predicts, law_loss, term_predicts, term_loss = self.classifier_layer(pooled, accu_labels, law_labels, term_labels)  # [batch_size, 3] 
+        return accu_loss, law_loss, term_loss, accu_predicts, law_predicts, term_predicts
 
-    def forward(self, input_x,  input_sentences_lens, input_fact, input_claims_y):
-        #, input_sample_mask, input_sentences_mask
-        doc_rep = self.doc_encoder.forward(input_x, input_sentences_lens)  # [batch_size, hidden_dim]
-        doc_rep = self.doc_dropout(doc_rep) # [batch_size, hidden_size]
+    def x_given_bert(self, fact_list):
+        PAD, CLS = '[PAD]', '[CLS]'
+        contents = []
+        for line in fact_list:
+                content = line.strip()
+                if not content:
+                    continue
+                token = self.config.tokenizer.tokenize(content)
+                token = [CLS] + token
+                seq_len = len(token)
+                mask = []
+                token_ids = self.config.tokenizer.convert_tokens_to_ids(token)
 
-        claim_outputs = self.claim_classifier(doc_rep)
-        claim_log_softmax = torch.nn.functional.log_softmax(claim_outputs, dim=1)
-        _, claim_predicts = torch.max(claim_log_softmax, dim=1)
+                if self.config.pad_size:
+                    if len(token) < self.config.pad_size:
+                        mask = [1] * len(token_ids) + [0] * (self.config.pad_size - len(token))
+                        token_ids += ([0] * (self.config.pad_size - len(token)))
+                    else:
+                        mask = [1] * self.config.pad_size
+                        token_ids = token_ids[:self.config.pad_size]
+                        seq_len = self.config.pad_size
+               
+                contents.append([token_ids, seq_len, mask])
+        x = torch.LongTensor([_[0] for _ in contents]).to(self.config.device)
 
-        fact_logits = self.fact_classifier(doc_rep)  # [batch_size, hidden_dim] -> [batch_size, fact_num]
-        fact_predicts_prob = self.fact_sigmoid(fact_logits)
-        fact_predicts = torch.round(fact_predicts_prob)  # [batch_size, fact_num]
+        # pad前的长度(超过pad_size的设为pad_size)
+        seq_len = torch.LongTensor([_[1] for _ in contents]).to(self.config.device)
+        mask = torch.LongTensor([_[2] for _ in contents]).to(self.config.device)
+        return x, seq_len, mask
 
-        return fact_predicts, claim_predicts
-
+    
 
 if __name__ == '__main__':
    print(datetime.datetime.now())
-   debat_encoder = DebatEncoder(200, 200)
-   input = torch.randn(32, 60, 50, 200) # [batch_size, max_utterance_num, max_seq_len, word_embs_dim]
-   output = debat_encoder.forward(input)
-   print(output.size())
