@@ -125,21 +125,19 @@ def evaluate(model, valid_dataloader, config, name):
     print(torch.cuda.current_device())
     print(len(valid_dataloader))
     temp_start = time.time()
-    for batch_idx, datapoint in enumerate(valid_dataloader):
-        fact_list, accu_label_lists, law_label_lists, term_lists = datapoint
-        fact_list = x_given_bert(config, fact_list)
-        x, y, z = fact_list
-        #print('type(fact_list) = ',type(fact_list), 'type(accu_label_lists) = ',type(accu_label_lists), 'type(law_label_lists) = ',type(law_label_lists), 'type(term_lists) = ',type(term_lists))
-        x, y, z, accu_label_lists, law_label_lists, term_lists = Variable(x, volatile=True), Variable(y, volatile=True), Variable(z, volatile=True), \
-                                Variable(accu_label_lists), Variable(law_label_lists), Variable(term_lists)
-        _, _, _, accu_preds, law_preds, term_preds = model((x, y, z), accu_label_lists, law_label_lists, term_lists) #, config.sent_len, config.doc_len
-        ground_accu_y.extend(accu_label_lists.tolist())
-        ground_law_y.extend(law_label_lists.tolist())
-        ground_term_y.extend(term_lists.tolist())
-        
-        predicts_accu_y.extend(accu_preds.tolist())
-        predicts_law_y.extend(law_preds.tolist())
-        predicts_term_y.extend(term_preds.tolist())
+    with torch.no_grad():
+        for batch_idx, datapoint in enumerate(valid_dataloader):
+            fact_list, accu_label_lists, law_label_lists, term_lists = datapoint
+            fact_list = x_given_bert(config, fact_list)
+            _, _, _, accu_preds, law_preds, term_preds = model(fact_list, accu_label_lists, law_label_lists, term_lists) #, config.sent_len, config.doc_len
+            ground_accu_y.extend(accu_label_lists.tolist())
+            ground_law_y.extend(law_label_lists.tolist())
+            ground_term_y.extend(term_lists.tolist())
+            
+            predicts_accu_y.extend(accu_preds.tolist())
+            predicts_law_y.extend(law_preds.tolist())
+            predicts_term_y.extend(term_preds.tolist())
+    
     accu_accuracy = accuracy_score(ground_accu_y, predicts_accu_y)
     law_accuracy = accuracy_score(ground_law_y, predicts_law_y)
     term_accuracy = accuracy_score(ground_term_y, predicts_term_y)
