@@ -12,12 +12,13 @@ import pickle
 import random
 import sys
 import time
+from typing import List
 
 import numpy as np
 import torch
 from sklearn.metrics import (accuracy_score, classification_report, f1_score,
-                             precision_score, recall_score)
-from torch import optim
+                             precision_score, recall_score, confusion_matrix)
+from torch import optim, threshold
 from torch.utils.data.dataloader import DataLoader
 
 from models.model_HARNN import LawModel
@@ -28,13 +29,15 @@ from data.dataset import load_dataset, CustomDataset, collate_qa_fn
 
 from transformers import AutoTokenizer
 
+np.set_printoptions(threshold=np.inf)
+
 SEED_NUM = 2020
 torch.manual_seed(SEED_NUM)
 random.seed(SEED_NUM)
 np.random.seed(SEED_NUM)
 
 
-def load_model_decode(model_dir, config, dataset, name, gpu):
+def load_model(model_dir, config, gpu):
     config.HP_gpu = gpu
     print("Load Model from file: ", model_dir)
     model = LawModel(config)
@@ -47,9 +50,8 @@ def load_model_decode(model_dir, config, dataset, name, gpu):
     # else:
     model.load_state_dict(torch.load(model_dir))
     # model = torch.load(model_dir)
-    score = evaluate(model, dataset, name)
 
-    return
+    return model
 
 def str2bool(params):
     return True if params.lower() == 'true' else False
@@ -109,14 +111,27 @@ def data_initialization(data, train_file, dev_file, test_file):
     return data
 
 
-def evaluate(model, valid_dataloader, name):
+def decode_id2sentence(fact_ids, id2word_dict, fact_sent_num: int, fact_sent_len: List[int]):
+    fact = []
+    for s_num in range(fact_sent_num):
+        s_len = fact_sent_len[s_num] 
+        fact.extend([id2word_dict[id.item()] for id in fact_ids[s_num][:s_len]])
+    return ' '.join(fact)
 
+
+def evaluate(model, valid_dataloader, name, config: Config):
+    id2word_dict = {i: w for (w, i) in config.word2id_dict.items()}
     model.eval()
     ground_accu_y, ground_law_y, ground_term_y  = [], [], []
     predicts_accu_y, predicts_law_y, predicts_term_y = [], [], []
 
     for batch_idx, datapoint in enumerate(valid_dataloader):
         fact_list, accu_label_lists, law_label_lists, term_lists = datapoint
+        fact_mask = ~fact_list.eq(config.word2id_dict["BLANK"])
+        fact_sent_len = torch.sum(fact_mask, dim=-1) # [batch_size, sent_num]
+        fact_doc_mask = fact_sent_len.bool()
+        fact_sent_num = torch.sum(fact_doc_mask, dim=-1) #[batch_size]
+        # print('fact len:', fact_doc_len.size())
         _, _, _, accu_preds, law_preds, term_preds = model.neg_log_likelihood_loss(fact_list, accu_label_lists,law_label_lists, term_lists, config.sent_len, config.doc_len)
 
         ground_accu_y.extend(accu_label_lists.tolist())
@@ -127,11 +142,31 @@ def evaluate(model, valid_dataloader, name):
         predicts_law_y.extend(law_preds.tolist())
         predicts_term_y.extend(term_preds.tolist())
 
+        """
+        for idx, accu_label in enumerate(accu_label_lists):
+            if accu_label == 1 and accu_preds[idx] != accu_label:
+                fact_ = fact_list[idx]
+                decode_fact = decode_id2sentence(fact_, id2word_dict, fact_sent_num[idx].item(), fact_sent_len[idx])
+                print(decode_fact)
+                print(f"accu label: {accu_label}, predict label: {accu_preds[idx]}")
+        """
+
     accu_accuracy = accuracy_score(ground_accu_y, predicts_accu_y)
     law_accuracy = accuracy_score(ground_law_y, predicts_law_y)
     term_accuracy = accuracy_score(ground_term_y, predicts_term_y)
+    confused_matrix_accu = confusion_matrix(ground_accu_y, predicts_accu_y)
+    confused_matrix_law = confusion_matrix(ground_law_y, predicts_law_y)
+    confused_matrix_term = confusion_matrix(ground_term_y, predicts_term_y)
+    
+    print("Confused matrix accu:", confused_matrix_accu[1])
+    # print("Confused matrix law:", confused_matrix_law)
+    # print("Confused matirx term:", confused_matrix_term)
+
     print("Accu task accuracy: %.4f, Law task accuracy: %.4f, Term task accuracy: %.4f" % (accu_accuracy, law_accuracy, term_accuracy)) 
     score = get_result(ground_accu_y, predicts_accu_y, ground_law_y, predicts_law_y, ground_term_y, predicts_term_y, name)
+    # print("accu classification report:", classification_report(ground_accu_y, predicts_accu_y))
+    # print("law classification report:", classification_report(ground_law_y, predicts_law_y))
+    # print("term classification report:", classification_report(ground_term_y, predicts_term_y))
 
     return score
 
@@ -155,7 +190,7 @@ def train(model, dataset, config: Config):
     elif config.use_sgd:
         optimizer = optim.SGD(parameters, lr=config.HP_lr, momentum=config.HP_momentum)
     elif config.use_adam:
-        optimizer = optim.Adam(parameters, lr=config.HP_lr)
+        optimizer = optim.AdamW(parameters, lr=config.HP_lr)
     elif config.use_bert:
         optimizer = optim.Adam(parameters, lr=5e-6)  # fine tuning
     else:
@@ -227,7 +262,7 @@ def train(model, dataset, config: Config):
         sys.stdout.flush()
 
         # evaluate dev data
-        current_score = evaluate(model, valid_dataloader, "Dev")
+        current_score = evaluate(model, valid_dataloader, "Dev", config)
 
         if current_score > best_dev:
             print("Exceed previous best acc score:", best_dev)
@@ -237,7 +272,7 @@ def train(model, dataset, config: Config):
             model_name = config.save_model_dir + '.' + str(idx) + ".model"
             torch.save(model.state_dict(), model_name)
             # evaluate test data
-            _ = evaluate(model, test_dataloader, "Test")
+            _ = evaluate(model, test_dataloader, "Test", config)
         else:
             no_imporv_epoch += 1
             if no_imporv_epoch >= 10:
@@ -250,25 +285,27 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Contrastive Legal Judgement Prediction')
     parser.add_argument('--data_path', default="/data/home/ganleilei/law/ContrastiveLJP/")
     parser.add_argument('--status', default="train")
-    parser.add_argument('--savemodel', default="/data/home/ganleilei/law/ContrastiveLJP/models")
-    parser.add_argument('--savedset', default="/data/home/ganleilei/law/ContrastiveLJP/models")
+    parser.add_argument('--savemodel', default="/data/home/ganleilei/law/ContrastiveLJP/models/harnn")
+    parser.add_argument('--savedset', default="/data/home/ganleilei/law/ContrastiveLJP/models/harnn/data")
     parser.add_argument('--loadmodel', default="")
 
     parser.add_argument('--embedding_path', default='/data/home/ganleilei/law/ContrastiveLJP/cail_thulac.npy')
+    parser.add_argument('--word2id_dict', default='/data/home/ganleilei/law/ContrastiveLJP/w2id_thulac.pkl')
     parser.add_argument('--word_emb_dim', default=200)
     parser.add_argument('--MAX_SENTENCE_LENGTH', default=250)
     parser.add_argument('--hops', default=3)
     parser.add_argument('--heads', default=4)
     parser.add_argument('--max_decoder_step', default=100)
 
-    parser.add_argument('--HP_iteration', default=30)
-    parser.add_argument('--HP_batch_size', default=128)
-    parser.add_argument('--HP_hidden_dim', default=256)
-    parser.add_argument('--HP_dropout', default=0.2)
-    parser.add_argument('--HP_lstmdropout', default=0.5)
-    parser.add_argument('--HP_lstm_layer', default=1)
+    parser.add_argument('--HP_iteration', default=30, type=int)
+    parser.add_argument('--HP_batch_size', default=128, type=int)
+    parser.add_argument('--HP_hidden_dim', default=256, type=int)
+    parser.add_argument('--HP_dropout', default=0.2, type=float)
+    parser.add_argument('--HP_lstmdropout', default=0.5, type=float)
+    parser.add_argument('--HP_lstm_layer', default=1, type=int)
     parser.add_argument('--HP_lr', default=1e-3, type=float)
     parser.add_argument('--HP_lr_decay', default=0.05, type=float)
+    parser.add_argument('--HP_freeze_word_emb', action='store_true')
 
     parser.add_argument('--use_warmup_adam', default='False')
     parser.add_argument('--use_adam', default='True')
@@ -296,11 +333,19 @@ if __name__ == '__main__':
             config.MAX_SENTENCE_LENGTH = args.MAX_SENTENCE_LENGTH
             config.HP_lr_decay = args.HP_lr_decay
             config.save_model_dir = args.savemodel
+            config.HP_freeze_word_emb = args.HP_freeze_word_emb
+            if not os.path.exists(config.save_model_dir):
+                os.mkdir(config.save_model_dir)
+            
             config.save_dset_dir = args.savedset
+            if not os.path.exists(config.save_dset_dir):
+                os.mkdir(config.save_dset_dir)
+
             config.use_warmup_adam = str2bool(args.use_warmup_adam)
             config.use_adam = str2bool(args.use_adam)
             
             config.load_word_pretrain_emb(args.embedding_path)
+            config.word2id_dict = pickle.load(open(args.word2id_dict, 'rb'))
             save_data_setting(config, config.save_dset_dir + '.dset')
             model = LawModel(config)
 
@@ -334,6 +379,17 @@ if __name__ == '__main__':
             exit(1)
 
         config = load_data_setting(args.savedset)
-        print("\nLoading data...")
-        test_data = load_data(args.test, config)
-        decode_results = load_model_decode(args.loadmodel, config, test_data, 'Test', True)
+        config.word2id_dict = pickle.load(open("/data/home/ganleilei/law/ContrastiveLJP/w2id_thulac.pkl", 'rb'))
+        tokenizer_path = "/data/home/ganleilei/bert/bert-base-chinese/"
+        tokenizer = AutoTokenizer.from_pretrained(tokenizer_path)
+        train_data, valid_data, test_data = load_dataset(args.data_path)
+        train_dataset = CustomDataset(train_data, tokenizer, 512)
+        valid_dataset = CustomDataset(valid_data, tokenizer, 512)
+        test_dataset = CustomDataset(test_data, tokenizer, 512)
+        train_dataloader = DataLoader(train_dataset, batch_size=config.HP_batch_size, shuffle=False, collate_fn=collate_qa_fn)
+        valid_dataloader = DataLoader(valid_dataset, batch_size=config.HP_batch_size, shuffle=False, collate_fn=collate_qa_fn)
+        test_dataloader = DataLoader(test_dataset, batch_size=config.HP_batch_size, shuffle=False, collate_fn=collate_qa_fn)
+
+        print("\nFinish loading data!")
+        model = load_model(args.loadmodel, config, True)
+        score = evaluate(model, test_dataloader, "Test", config)
