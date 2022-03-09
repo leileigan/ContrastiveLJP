@@ -125,7 +125,7 @@ class LawModel(nn.Module):
         self.term_classifier = torch.nn.Linear(self.hidden_dim * 2, config.term_label_size)
         self.term_loss = torch.nn.NLLLoss()
 
-        self.temperature = 0.7
+        self.temperature = config.temperature
     
 
     def classifier_layer(self, doc_out, accu_labels, law_labels, term_labels):
@@ -194,22 +194,6 @@ class LawModel(nn.Module):
         attn_q_weights = torch.matmul(lstm2_out, self.attn_q)
         attn_q_out = F.softmax(attn_q_weights, dim=1)
         doc_rep = torch.sum(lstm2_out*attn_q_out, dim=1) #[batch_size, hidden_dim * 2]
-
-        """
-        claim_word_embeds = self.word_embeddings_layer.forward(batch_claim_ids.view(batch_size * max_claims_num, -1))  # [batch_size*max_claims_num, max_claim_seq_len, word_emb_size]
-        # [batch_size, max_claim_num, max_sequence_len] -> [batch_size * max_claims_num, max_claim_seq_len, word_embed_dim]
-        hidden = None
-        claim_out, hidden = self.lstm_layer1.forward(claim_word_embeds, hidden)  # [batch_size * max_claims_num, max_claim_seq_len, hidden_dim * 2]
-        attn_p_weights = torch.matmul(claim_out, self.attn_p)
-        attn_p_outs = F.softmax(attn_p_weights, dim=1)
-        claim_rep = torch.sum(claim_out*attn_p_outs, dim=1).view(batch_size*max_claims_num, 1, -1)
-        doc_claim_rep = torch.cat((doc_sent_repeat_rep, claim_rep), dim=1) #[batch_size*max_claims_num, max_sen_num+1, hidden_dim*2]
-        hidden = None
-        lstm2_out, hidden = self.lstm_layer2.forward(doc_claim_rep, hidden)
-        attn_q_weights = torch.matmul(lstm2_out, self.attn_q)
-        attn_q_out = F.softmax(attn_q_weights, dim=1)
-        doc_rep = torch.sum(lstm2_out*attn_q_out, dim=1) #[batch_size, hidden_dim * 2]
-        """
 
         accu_predicts, accu_loss, law_predicts, law_loss, term_predicts, term_loss, cl_loss = self.classifier_layer(doc_rep, accu_labels, law_labels, term_labels)  # [batch_size, 3]
         return accu_loss, law_loss, term_loss, cl_loss, accu_predicts, law_predicts, term_predicts
