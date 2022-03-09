@@ -165,7 +165,7 @@ class LawModel(nn.Module):
 
 
 
-    def neg_log_likelihood_loss(self, input_facts, accu_labels, law_labels, term_labels, input_sentences_lens, input_doc_len):
+    def forward(self, input_facts, accu_labels, law_labels, term_labels):
         """
         Args:
             input_facts: [batch_size, max_sent_num, max_sent_seq_len]
@@ -198,22 +198,6 @@ class LawModel(nn.Module):
         accu_predicts, accu_loss, law_predicts, law_loss, term_predicts, term_loss, cl_loss = self.classifier_layer(doc_rep, accu_labels, law_labels, term_labels)  # [batch_size, 3]
         return accu_loss, law_loss, term_loss, cl_loss, accu_predicts, law_predicts, term_predicts
 
-
-    def forward(self, input_x,  input_sentences_lens, input_fact, input_claims_y, input_claims_type):
-        #, input_sample_mask, input_sentences_mask
-
-        doc_rep = self.doc_encoder.forward(input_x, input_sentences_lens)  # [batch_size, hidden_dim]
-        claim_outputs = self.claim_classifier(doc_rep)  # [batch_size, 3]
-        claim_log_softmax = torch.nn.functional.log_softmax(claim_outputs, dim=1)
-        _, claim_predicts = torch.max(claim_log_softmax, dim=1)
-
-        fact_representation = self.fact_dense(doc_rep)  # [batch_size, hidden_dim] -> [batch_size, fact_num]
-        batch_size = fact_representation.size(0)
-        fact_logits = self.fact_classifier(self.fact_activation(fact_representation))
-        fact_predicts_prob = self.fact_sigmoid(fact_logits)
-        fact_predicts = torch.round(fact_predicts_prob)  # [batch_size, fact_num]
-
-        return fact_predicts, claim_predicts
 
 
 if __name__ == '__main__':
