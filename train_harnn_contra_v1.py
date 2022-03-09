@@ -256,8 +256,8 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Contrastive Legal Judgement Prediction')
     parser.add_argument('--data_path', default="/data/home/ganleilei/law/ContrastiveLJP/")
     parser.add_argument('--status', default="train")
-    parser.add_argument('--savemodel', default="/data/home/ganleilei/law/ContrastiveLJP/models/harnnContra_v2/")
-    parser.add_argument('--savedset', default="/data/home/ganleilei/law/ContrastiveLJP/models/harnnContra_v2/data")
+    parser.add_argument('--savemodel', default="/data/home/ganleilei/law/ContrastiveLJP/models/harnnContra_v1/")
+    parser.add_argument('--savedset', default="/data/home/ganleilei/law/ContrastiveLJP/models/harnnContra_v1/data")
     parser.add_argument('--loadmodel', default="")
 
     parser.add_argument('--embedding_path', default='/data/home/ganleilei/law/ContrastiveLJP/cail_thulac.npy')
