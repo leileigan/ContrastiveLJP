@@ -4,6 +4,7 @@
 # @Contact: 11921071@zju.edu.cn
 
 import argparse
+from cProfile import label
 import copy
 import datetime
 import json
@@ -22,7 +23,7 @@ from torch import optim, threshold
 from torch.utils.data.dataloader import DataLoader
 
 from models.model_HARNN import LawModel
-from utils.config import Config
+from utils.config import Config, seed_rand
 from utils.functions import load_data
 from utils.optim import ScheduledOptim
 from data.dataset import load_dataset, CustomDataset, collate_qa_fn
@@ -79,10 +80,16 @@ def load_data_setting(save_file):
     data.show_data_summary()
     return data
 
+
+confused_labels = [1, 3, 4, 5, 6, 9, 11, 12, 14, 15, 16, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 29, 30, 33, 34, 36, 37, 38, 41, 42, 44, 45, 48, 52, 53, 54,
+                   55, 58, 60, 61, 69, 71, 72, 74, 75, 76, 77, 78, 79, 80, 82, 83, 84, 86, 91, 92, 93, 95, 99, 100, 104, 107, 108, 109, 110, 111, 112, 113, 114, 116, 117, 118]
 def get_result(accu_target, accu_preds, law_target, law_preds, term_target, term_preds, mode):
     accu_macro_f1 = f1_score(accu_target, accu_preds, average="macro")
     accu_macro_precision = precision_score(accu_target, accu_preds, average="macro")
     accu_macro_recall = recall_score(accu_target, accu_preds, average="macro")
+    confused_accu_macro_f1 = f1_score(accu_target, accu_preds, average='macro', labels=confused_labels)
+    confused_accu_macro_precision = precision_score(accu_target, accu_preds, average='macro', labels=confused_labels)
+    confused_accu_macro_recall = recall_score(accu_target, accu_preds, average='macro', labels=confused_labels)
 
     law_macro_f1 = f1_score(law_target, law_preds, average="macro")
     law_macro_precision = precision_score(law_target, law_preds, average="macro")
@@ -92,7 +99,10 @@ def get_result(accu_target, accu_preds, law_target, law_preds, term_target, term
     term_macro_precision = precision_score(term_target, term_preds, average="macro")
     term_macro_recall = recall_score(term_target, term_preds, average="macro")
 
-    print("Accu task: macro_f1:%.4f, macro_precision:%.4f, macro_recall:%.4f" % (accu_macro_f1, accu_macro_precision, accu_macro_recall))
+    print("Confused accu task: macro_f1:%.4f, macro_precision:%.4f, macro_recall:%.4f" % (
+        confused_accu_macro_f1, confused_accu_macro_precision, confused_accu_macro_recall))
+    print("Accu task: macro_f1:%.4f, macro_precision:%.4f, macro_recall:%.4f" %
+          (accu_macro_f1, accu_macro_precision, accu_macro_recall))
     print("Law task: macro_f1:%.4f, macro_precision:%.4f, macro_recall:%.4f" % (law_macro_f1, law_macro_precision, law_macro_recall))
     print("Term task: macro_f1:%.4f, macro_precision:%.4f, macro_recall:%.4f" % (term_macro_f1, term_macro_precision, term_macro_recall))
 
@@ -132,7 +142,7 @@ def evaluate(model, valid_dataloader, name, config: Config):
         fact_doc_mask = fact_sent_len.bool()
         fact_sent_num = torch.sum(fact_doc_mask, dim=-1) #[batch_size]
         # print('fact len:', fact_doc_len.size())
-        _, _, _, accu_preds, law_preds, term_preds = model.neg_log_likelihood_loss(fact_list, accu_label_lists,law_label_lists, term_lists, config.sent_len, config.doc_len)
+        _, _, _, accu_preds, law_preds, term_preds = model.neg_log_likelihood_loss(fact_list, accu_label_lists,law_label_lists, term_lists)
 
         ground_accu_y.extend(accu_label_lists.tolist())
         ground_law_y.extend(law_label_lists.tolist())
@@ -159,9 +169,6 @@ def evaluate(model, valid_dataloader, name, config: Config):
     confused_matrix_term = confusion_matrix(ground_term_y, predicts_term_y)
     
     print("Confused matrix accu:", confused_matrix_accu[1])
-    # print("Confused matrix law:", confused_matrix_law)
-    # print("Confused matirx term:", confused_matrix_term)
-
     print("Accu task accuracy: %.4f, Law task accuracy: %.4f, Term task accuracy: %.4f" % (accu_accuracy, law_accuracy, term_accuracy)) 
     score = get_result(ground_accu_y, predicts_accu_y, ground_law_y, predicts_law_y, ground_term_y, predicts_term_y, name)
     # print("accu classification report:", classification_report(ground_accu_y, predicts_accu_y))
@@ -220,9 +227,7 @@ def train(model, dataset, config: Config):
             accu_loss, law_loss, term_loss, accu_preds, law_preds, term_preds = model.neg_log_likelihood_loss(fact_list, 
                                                                                                               accu_label_lists, 
                                                                                                               law_label_lists, 
-                                                                                                              term_lists, 
-                                                                                                              config.sent_len, 
-                                                                                                              config.doc_len
+                                                                                                              term_lists
                                                                                                               )
             loss = (accu_loss + term_loss + law_loss) / batch_size
             sample_loss += loss.data
@@ -238,11 +243,10 @@ def train(model, dataset, config: Config):
             predicts_law_y.extend(law_preds.tolist())
             predicts_term_y.extend(term_preds.tolist())
 
-            cur_accu_accuracy = accuracy_score(ground_accu_y, predicts_accu_y)
-            cur_law_accuracy = accuracy_score(ground_law_y, predicts_law_y)
-            cur_term_accuracy = accuracy_score(ground_term_y, predicts_term_y)
-
             if (batch_idx + 1 ) % 100 == 0:
+                cur_accu_accuracy = accuracy_score(ground_accu_y, predicts_accu_y)
+                cur_law_accuracy = accuracy_score(ground_law_y, predicts_law_y)
+                cur_term_accuracy = accuracy_score(ground_term_y, predicts_term_y)
                 temp_time = time.time()
                 temp_cost = temp_time - temp_start
                 temp_start = temp_time
@@ -309,9 +313,13 @@ if __name__ == '__main__':
 
     parser.add_argument('--use_warmup_adam', default='False')
     parser.add_argument('--use_adam', default='True')
+    parser.add_argument('--seed', default=2020, type=int)
+    parser.add_argument('--bert_path', type=str)
 
     args = parser.parse_args()
+    print(args)
 
+    seed_rand(args.seed)
     status = args.status
 
     if status == 'train':
@@ -355,8 +363,7 @@ if __name__ == '__main__':
             model.cuda()
 
         print("\nLoading data...")
-        tokenizer_path = "/data/home/ganleilei/bert/bert-base-chinese/"
-        tokenizer = AutoTokenizer.from_pretrained(tokenizer_path)
+        tokenizer = AutoTokenizer.from_pretrained(args.bert_path)
         train_data, valid_data, test_data = load_dataset(args.data_path)
         train_dataset = CustomDataset(train_data, tokenizer, 512)
         valid_dataset = CustomDataset(valid_data, tokenizer, 512)

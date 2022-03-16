@@ -12,13 +12,6 @@ import datetime
 from utils.config import Config
 import random
 
-BERT_MODEL_PATH = "/mnt/data/ganleilei/chinese_L-12_H-768_A-12/"
-SEED_NUM = 2020
-torch.manual_seed(SEED_NUM)
-random.seed(SEED_NUM)
-np.random.seed(SEED_NUM)
-
-
 class LawModel(nn.Module):
 
     def __init__(self, config: Config):
@@ -66,14 +59,6 @@ class LawModel(nn.Module):
         accu_log_softmax = F.log_softmax(accu_logits, dim=-1)
         accu_loss = self.accu_loss(accu_log_softmax, accu_labels)
         _, accu_predicts = torch.max(accu_log_softmax, dim=-1) # [batch_size, accu_label_size]
-        """
-        confuse_label_index = accu_labels.eq(1).nonzero().squeeze(-1)
-        if confuse_label_index.size(0) > 0: 
-            print("confuse label index size:", confuse_label_index.size())
-            print("confusing accu probs size:", accu_probs[confuse_label_index].size())
-            print("confusing logits 1:", accu_probs[confuse_label_index][:, 1])
-            print("confusing logits 111:", accu_probs[confuse_label_index][:, 111])
-        """
         law_logits = self.law_classifier(doc_out)  # [batch_size, law_label_size]
         law_probs = F.softmax(law_logits, dim=-1)
         law_log_softmax = F.log_softmax(law_logits, dim=-1)
@@ -89,7 +74,7 @@ class LawModel(nn.Module):
         return accu_predicts, accu_loss, law_predicts, law_loss, term_predicts, term_loss
 
 
-    def neg_log_likelihood_loss(self, input_facts, accu_labels, law_labels, term_labels, input_sentences_lens, input_doc_len):
+    def neg_log_likelihood_loss(self, input_facts, accu_labels, law_labels, term_labels):
         """
         Args:
             input_facts: [batch_size, max_sent_num, max_sent_seq_len]
@@ -97,9 +82,6 @@ class LawModel(nn.Module):
             law_labels: [batch_size]
             accu_labels : [batch_size]
             term_labels : [batch_size]
-            input_sentences_lens : int 
-            input_doc_len : int 
-
         Returns:
             [type]: [description]
         """
@@ -123,7 +105,7 @@ class LawModel(nn.Module):
         return accu_loss, law_loss, term_loss, accu_predicts, law_predicts, term_predicts
 
 
-    def get_hidden_state(self, input_facts, accu_labels, law_labels, term_labels, input_sentences_lens, input_doc_len):
+    def get_hidden_state(self, input_facts, accu_labels, law_labels, term_labels):
         batch_size, max_sent_num, max_sent_seq_len = input_facts.size()
         doc_word_embeds = self.word_embeddings_layer.forward(input_facts.view(batch_size*max_sent_num, -1)) #[batch_size*max_sent_num, max_doc_seq_len, word_emb_size]
 
