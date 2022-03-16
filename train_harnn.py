@@ -4,7 +4,6 @@
 # @Contact: 11921071@zju.edu.cn
 
 import argparse
-from cProfile import label
 import copy
 import datetime
 import json
@@ -24,7 +23,6 @@ from torch.utils.data.dataloader import DataLoader
 
 from models.model_HARNN import LawModel
 from utils.config import Config, seed_rand
-from utils.functions import load_data
 from utils.optim import ScheduledOptim
 from data.dataset import load_dataset, CustomDataset, collate_qa_fn
 
@@ -301,7 +299,7 @@ if __name__ == '__main__':
     parser.add_argument('--heads', default=4)
     parser.add_argument('--max_decoder_step', default=100)
 
-    parser.add_argument('--HP_iteration', default=30, type=int)
+    parser.add_argument('--HP_iteration', default=50, type=int)
     parser.add_argument('--HP_batch_size', default=128, type=int)
     parser.add_argument('--HP_hidden_dim', default=256, type=int)
     parser.add_argument('--HP_dropout', default=0.2, type=float)
@@ -315,6 +313,7 @@ if __name__ == '__main__':
     parser.add_argument('--use_adam', default='True')
     parser.add_argument('--seed', default=2020, type=int)
     parser.add_argument('--bert_path', type=str)
+    parser.add_argument('--sample_size', default='all', type=str)
 
     args = parser.parse_args()
     print(args)
@@ -365,7 +364,15 @@ if __name__ == '__main__':
         print("\nLoading data...")
         tokenizer = AutoTokenizer.from_pretrained(args.bert_path)
         train_data, valid_data, test_data = load_dataset(args.data_path)
-        train_dataset = CustomDataset(train_data, tokenizer, 512)
+        if args.sample_size is not 'all':
+            sample_size = int(args.sample_size)
+            sample_train_data  = {}
+            for key in train_data.keys():
+                sample_train_data[key] = train_data[key][:sample_size]
+        else:
+            sample_train_data = train_data
+        
+        train_dataset = CustomDataset(sample_train_data, tokenizer, 512)
         valid_dataset = CustomDataset(valid_data, tokenizer, 512)
         test_dataset = CustomDataset(test_data, tokenizer, 512)
 
