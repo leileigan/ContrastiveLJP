@@ -72,9 +72,6 @@ class LawModel(nn.Module):
         
         self.term_classifier = torch.nn.Linear(self.hidden_dim * 2, config.term_label_size)
         self.term_loss = torch.nn.NLLLoss()
-
-        self.temperature = config.temperature
-        self.warm_epoch = config.warm_epoch
     
 
     def classifier_layer(self, doc_out, accu_labels, law_labels, term_labels):
@@ -141,30 +138,33 @@ class LawModel(nn.Module):
 
 
 class MoCo(nn.Module):
-    def __init__(self, config, dim=119, K=65536, m=0.999, T=0.07):
+    def __init__(self, config: Config, dim=119):
         super(MoCo, self).__init__()
 
-        self.K = K
-        self.m = m
-        self.T = T
+        self.K = config.moco_queue_size
+        self.m =config.moco_momentum
+        self.T = config.moco_temperature
+        self.config = config
 
         # create the encoders
         # num_classes is the output fc dimension
         self.encoder_q = LawModel(config)
         self.encoder_k = LawModel(config)
-        self.config = config
        
         for param_q, param_k in zip(self.encoder_q.parameters(), self.encoder_k.parameters()):
             param_k.data.copy_(param_q.data)  # initialize
             param_k.requires_grad = False  # not update by gradient
 
         # create the queue
-        self.register_buffer("feature_queue", torch.randn(K, dim))
+        self.register_buffer("feature_queue", torch.randn(self.K, dim))
         self.queue = nn.functional.normalize(self.feature_queue.cuda(), dim=1)
-        self.register_buffer("queue_ptr", torch.zeros(1, dtype=torch.long))
 
-        self.register_buffer("accu_label_queue", torch.randint(-1, 0, (K, 1)))
-        self.register_buffer("term_label_queue", torch.randint(-1, 0, (K, 1)))
+        self.register_buffer("accu_label_queue", torch.randint(-1, 0, (self.K, 1)))
+        self.register_buffer("term_label_queue", torch.randint(-1, 0, (self.K, 1)))
+        self.accu_label_queue = self.accu_label_queue.cuda()
+        self.term_label_queue = self.term_label_queue.cuda()
+
+        self.register_buffer("queue_ptr", torch.zeros(1, dtype=torch.long))
         self.register_buffer("label_ptr", torch.zeros(1, dtype=torch.long))
 
 
@@ -178,7 +178,7 @@ class MoCo(nn.Module):
         batch_size = keys.shape[0]
         ptr = int(self.queue_ptr)
 
-        assert self.K & batch_size == 0
+        assert self.K % batch_size == 0
 
         self.queue[ptr:ptr+batch_size, :] = keys
         self.accu_label_queue[ptr:ptr+batch_size, :] = accu_label_lists.unsqueeze(1)
@@ -192,13 +192,13 @@ class MoCo(nn.Module):
         accu_label_lists = accu_label_lists.unsqueeze(1)
         term_label_lists = term_label_lists.unsqueeze(1)
         # mask for charge
-        accu_mask = torch.eq(accu_label_lists, self.accu_label_queue.T).cuda() #[bsz, queue_size]
+        accu_mask = torch.eq(accu_label_lists, self.accu_label_queue.T) #[bsz, queue_size]
         # mask for term
-        term_mask = torch.eq(term_label_lists, self.term_label_queue.T).cuda() #[bsz, queue_size]
+        term_mask = torch.eq(term_label_lists, self.term_label_queue.T) #[bsz, queue_size]
         # mask for charge and term
         accu_term_mask = (accu_mask & term_mask).float()
 
-        query_queue_product = torch.einsum('nc,kc->nk', [query, self.queue.clone().detach().cuda()])
+        query_queue_product = torch.einsum('nc,kc->nk', [query, self.queue.clone().detach()])
         query_queue_product = query_queue_product/ self.T
         exp_logits = torch.exp(query_queue_product)
 

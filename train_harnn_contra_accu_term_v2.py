@@ -270,10 +270,14 @@ if __name__ == '__main__':
 
     parser.add_argument('--use_warmup_adam', default='False')
     parser.add_argument('--use_adam', default='True')
-    parser.add_argument('--temperature', default=0.7, type=float)
     parser.add_argument('--alpha', default=0.1, type=float)
     parser.add_argument('--warm_epoch', default=0, type=int)
     parser.add_argument('--seed', default=2022, type=int)
+    parser.add_argument('--bert_path', type=str)
+    parser.add_argument('--sample_size', default='all', type=str)
+    parser.add_argument('--moco_queue_size', default=65536, type=int)
+    parser.add_argument('--moco_momentum', default=0.999, type=float)
+    parser.add_argument('--moco_temperature', default=0.07, type=float)
 
     args = parser.parse_args()
     print(args)
@@ -310,7 +314,9 @@ if __name__ == '__main__':
             
             config.use_warmup_adam = str2bool(args.use_warmup_adam)
             config.use_adam = str2bool(args.use_adam)
-            config.temperature = args.temperature
+            config.moco_temperature = args.moco_temperature
+            config.moco_queue_size = args.moco_queue_size
+            config.moco_momentum = args.moco_momentum
             config.warm_epoch = args.warm_epoch
             config.alpha = args.alpha
             
@@ -324,10 +330,18 @@ if __name__ == '__main__':
             model.cuda()
 
         print("\nLoading data...")
-        tokenizer_path = "/data/home/ganleilei/bert/bert-base-chinese/"
-        tokenizer = AutoTokenizer.from_pretrained(tokenizer_path)
+        tokenizer = AutoTokenizer.from_pretrained(args.bert_path)
         train_data, valid_data, test_data = load_dataset(args.data_path)
-        train_dataset = CustomDataset(train_data, tokenizer, config.MAX_SENTENCE_LENGTH)
+        if args.sample_size != 'all':
+            print("sample size:", args.sample_size)
+            sample_size = int(args.sample_size)
+            sample_train_data  = {}
+            for key in train_data.keys():
+                sample_train_data[key] = train_data[key][:sample_size]
+        else:
+            sample_train_data = train_data
+        
+        train_dataset = CustomDataset(sample_train_data, tokenizer, config.MAX_SENTENCE_LENGTH)
         valid_dataset = CustomDataset(valid_data, tokenizer, config.MAX_SENTENCE_LENGTH)
         test_dataset = CustomDataset(test_data, tokenizer, config.MAX_SENTENCE_LENGTH)
 
