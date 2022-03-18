@@ -58,14 +58,13 @@ class Config:
         self.save_model_dir = ""
         self.save_dset_dir = ""
 
-        self.hops = 3
-        self.heads = 4
-
         self.filters_size = [1, 3, 4, 5]
         self.num_filters = [50, 50, 50, 50]
 
         #contrastive learning
-        self.temperature = 0.7
+        self.moco_temperature = 0.07
+        self.moco_queue_size = 65536
+        self.moco_momentum = 0.999
         self.alpha = 0.1
         self.warm_epoch = 0
 
@@ -92,7 +91,9 @@ class Config:
         print("     Filter size:        :  %s" % (self.filters_size))
         print("     Number filters      :  %s" % (self.num_filters))
 
-        print("     Temperature         :  %s" % (self.temperature))
+        print("     Temperature         :  %s" % (self.moco_temperature))
+        print("     Momentum            :  %s" % (self.moco_momentum))
+        print("     Queue size          :  %s" % (self.moco_queue_size))
         print("     Alpha               :  %s" % (self.alpha))
 
         print("DATA SUMMARY END.")
