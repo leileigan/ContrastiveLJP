@@ -77,7 +77,6 @@ class LawModel(nn.Module):
         self.term_classifier = torch.nn.Linear(self.hidden_dim * 2, config.term_label_size)
         self.term_loss = torch.nn.NLLLoss()
 
-        self.temperature = config.temperature
         self.warm_epoch = config.warm_epoch
     
 
