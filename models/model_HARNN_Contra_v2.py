@@ -14,10 +14,7 @@ import random
 from transformers import BertForSequenceClassification
 np.set_printoptions(threshold=np.inf)
 torch.set_printoptions(threshold=np.inf)
-SEED_NUM = 2022
-torch.manual_seed(SEED_NUM)
-random.seed(SEED_NUM)
-np.random.seed(SEED_NUM)
+
 
 """
 class WeightingModel(nn.Module):
