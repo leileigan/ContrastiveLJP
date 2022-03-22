@@ -23,7 +23,6 @@ from torch.utils.data.dataloader import DataLoader
 
 from models.model_HARNN_Contra import LawModel
 from utils.config import Config
-from utils.functions import load_data
 from utils.optim import ScheduledOptim
 from data.dataset import load_dataset, CustomDataset, collate_qa_fn
 np.set_printoptions(threshold=np.inf)
@@ -282,6 +281,7 @@ if __name__ == '__main__':
     parser.add_argument('--temperature', default=0.7, type=float)
     parser.add_argument('--alpha', default=0.1, type=float)
     parser.add_argument('--warm_epoch', default=0, type=int)
+    parser.add_argument('--bert_path', type=str)
 
     args = parser.parse_args()
     print(args)
@@ -317,7 +317,7 @@ if __name__ == '__main__':
             
             config.use_warmup_adam = str2bool(args.use_warmup_adam)
             config.use_adam = str2bool(args.use_adam)
-            config.temperature = args.temperature
+            config.moco_temperature = args.temperature
             config.warm_epoch = args.warm_epoch
             config.alpha = args.alpha
             
@@ -331,8 +331,7 @@ if __name__ == '__main__':
             model.cuda()
 
         print("\nLoading data...")
-        tokenizer_path = "/data/home/ganleilei/bert/bert-base-chinese/"
-        tokenizer = AutoTokenizer.from_pretrained(tokenizer_path)
+        tokenizer = AutoTokenizer.from_pretrained(args.bert_path)
         train_data, valid_data, test_data = load_dataset(args.data_path)
         train_dataset = CustomDataset(train_data, tokenizer, config.MAX_SENTENCE_LENGTH)
         valid_dataset = CustomDataset(valid_data, tokenizer, config.MAX_SENTENCE_LENGTH)
