@@ -21,7 +21,6 @@ from torch import optim
 from torch.utils.data.dataloader import DataLoader
 
 from models.model_HARNN_Contra_v3 import LawModel, MoCo
-from train_harnn import load_model
 from utils.config import Config, seed_rand
 from utils.optim import ScheduledOptim
 from data.dataset import load_dataset, CustomDataset, collate_qa_fn
@@ -311,6 +310,7 @@ if __name__ == '__main__':
     parser.add_argument('--moco_momentum', default=0.999, type=float)
     parser.add_argument('--moco_temperature', default=0.07, type=float)
     parser.add_argument('--moco_base_model', type=str)
+    parser.add_argument('--confused_matrix', type=str)
 
     args = parser.parse_args()
     print(args)
@@ -378,9 +378,8 @@ if __name__ == '__main__':
             "valid_dataloader": valid_dataloader
         }
 
-        # load base model
-        base_model = load_model(args.moco_base_model, config, True)
-        confused_matrix = find_hard_examples(base_model, valid_dataloader)
+        # load confused matrix
+        confused_matrix = pickle.load(open('/data/ganleilei/law/ContrastiveLJP/confused_matrix.npy', 'rb'))
         model = MoCo(config, confused_matrix)
         if config.HP_gpu:
             model.cuda()
