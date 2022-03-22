@@ -219,6 +219,7 @@ def train(model, dataset, config: Config):
                 sample_cl_loss = 0
 
             loss.backward()
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1)
             # optimizer.step_and_update_lr()
             optimizer.step()
             model.zero_grad()
@@ -365,6 +366,3 @@ if __name__ == '__main__':
             exit(1)
 
         config = load_data_setting(args.savedset)
-        print("\nLoading data...")
-        test_data = load_data(args.test, config)
-        decode_results = load_model_decode(args.loadmodel, config, test_data, 'Test', True)
