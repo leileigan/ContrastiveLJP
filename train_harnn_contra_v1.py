@@ -29,12 +29,6 @@ np.set_printoptions(threshold=np.inf)
 
 from transformers import AutoTokenizer
 
-SEED_NUM = 2020
-torch.manual_seed(SEED_NUM)
-random.seed(SEED_NUM)
-np.random.seed(SEED_NUM)
-
-
 def load_model_decode(model_dir, config, dataset, name, gpu):
     config.HP_gpu = gpu
     print("Load Model from file: ", model_dir)
