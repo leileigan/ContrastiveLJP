@@ -22,7 +22,7 @@ from torch import optim
 from torch.utils.data.dataloader import DataLoader
 
 from models.model_HARNN_Contra import LawModel
-from utils.config import Config
+from utils.config import Config, seed_rand
 from utils.optim import ScheduledOptim
 from data.dataset import load_dataset, CustomDataset, collate_qa_fn
 np.set_printoptions(threshold=np.inf)
@@ -282,9 +282,11 @@ if __name__ == '__main__':
     parser.add_argument('--alpha', default=0.1, type=float)
     parser.add_argument('--warm_epoch', default=0, type=int)
     parser.add_argument('--bert_path', type=str)
+    parser.add_argument('--seed', default=10, type=int)
 
     args = parser.parse_args()
     print(args)
+    seed_rand(args.seed)
 
     status = args.status
 
@@ -325,8 +327,8 @@ if __name__ == '__main__':
             save_data_setting(config, config.save_dset_dir + '.dset')
             model = LawModel(config)
 
-        config.show_data_summary()
 
+        config.show_data_summary()
         if config.HP_gpu:
             model.cuda()
 
