@@ -7,5 +7,6 @@ do
   --data_path /data/ganleilei/law/ContrastiveLJP/ \
   --savemodel /data/ganleilei/law/ContrastiveLJP/models/harnn/ \
   --savedset /data/ganleilei/law/ContrastiveLJP/models/harnn/data \
+  --word2id_dict /data/ganleilei/law/ContrastiveLJP/w2id_thulac.pkl \
   --embedding_path /data/ganleilei/law/ContrastiveLJP/cail_thulac.npy > logs/harnn/harnn_lr5e-4_seed${t}_bs32.log 2>&1
 done
