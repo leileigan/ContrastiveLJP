@@ -125,7 +125,7 @@ class LawModel(nn.Module):
         self.term_classifier = torch.nn.Linear(self.hidden_dim * 2, config.term_label_size)
         self.term_loss = torch.nn.NLLLoss()
 
-        self.temperature = config.temperature
+        self.temperature = config.moco_temperature
     
 
     def classifier_layer(self, doc_out, accu_labels, law_labels, term_labels):
