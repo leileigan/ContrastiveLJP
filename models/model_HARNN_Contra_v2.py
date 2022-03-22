@@ -62,10 +62,7 @@ class LawModel(nn.Module):
         nn.init.uniform_(self.attn_p, -0.1, 0.1)
         nn.init.uniform_(self.attn_q, -0.1, 0.1)
 
-        self.accu_classifier = torch.nn.Sequential(
-            torch.nn.Dropout(0.3),
-            torch.nn.Linear(self.hidden_dim * 2, config.accu_label_size)
-        )
+        self.accu_classifier = torch.nn.Linear(self.hidden_dim * 2, config.accu_label_size)
         self.accu_loss = torch.nn.NLLLoss()
         
         self.law_classifier = torch.nn.Linear(self.hidden_dim * 2, config.law_label_size)
