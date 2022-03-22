@@ -22,6 +22,7 @@ from torch import optim, threshold
 from torch.utils.data.dataloader import DataLoader
 
 from models.model_HARNN import LawModel
+from models.model_HARNN_Contra_accu_term_v3 import MoCo
 from utils.config import Config, seed_rand
 from utils.optim import ScheduledOptim
 from data.dataset import load_dataset, CustomDataset, collate_qa_fn
@@ -30,16 +31,12 @@ from transformers import AutoTokenizer
 
 np.set_printoptions(threshold=np.inf)
 
-SEED_NUM = 2020
-torch.manual_seed(SEED_NUM)
-random.seed(SEED_NUM)
-np.random.seed(SEED_NUM)
-
 
 def load_model(model_dir, config, gpu):
     config.HP_gpu = gpu
     print("Load Model from file: ", model_dir)
-    model = LawModel(config)
+    from models.model_HARNN_Contra_accu_term_v2 import MoCo
+    model = MoCo(config)
     if config.HP_gpu:
         model = model.cuda()
     ## load model need consider if the model trained in GPU and load in CPU, or vice versa
@@ -258,6 +255,7 @@ def train(model, dataset, config: Config):
 
             loss.backward()
             # optimizer.step_and_update_lr()
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1)
             optimizer.step()
             model.zero_grad()
 
@@ -364,7 +362,8 @@ if __name__ == '__main__':
         print("\nLoading data...")
         tokenizer = AutoTokenizer.from_pretrained(args.bert_path)
         train_data, valid_data, test_data = load_dataset(args.data_path)
-        if args.sample_size is not 'all':
+        if args.sample_size != 'all':
+            print("sample size:", args.sample_size)
             sample_size = int(args.sample_size)
             sample_train_data  = {}
             for key in train_data.keys():
