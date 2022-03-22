@@ -207,11 +207,10 @@ def train(model, dataset, config: Config):
             predicts_law_y.extend(law_preds.tolist())
             predicts_term_y.extend(term_preds.tolist())
 
-            cur_accu_accuracy = accuracy_score(ground_accu_y, predicts_accu_y)
-            cur_law_accuracy = accuracy_score(ground_law_y, predicts_law_y)
-            cur_term_accuracy = accuracy_score(ground_term_y, predicts_term_y)
-
             if (batch_idx + 1 ) % 100 == 0:
+                cur_accu_accuracy = accuracy_score(ground_accu_y, predicts_accu_y)
+                cur_law_accuracy = accuracy_score(ground_law_y, predicts_law_y)
+                cur_term_accuracy = accuracy_score(ground_term_y, predicts_term_y)
                 temp_time = time.time()
                 temp_cost = temp_time - temp_start
                 temp_start = temp_time
@@ -226,6 +225,7 @@ def train(model, dataset, config: Config):
 
             loss.backward()
             # optimizer.step_and_update_lr()
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1)
             optimizer.step()
             model.zero_grad()
 
