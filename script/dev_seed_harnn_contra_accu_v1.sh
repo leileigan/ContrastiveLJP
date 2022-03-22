@@ -8,5 +8,6 @@ do
   --savemodel /data/ganleilei/law/ContrastiveLJP/models/harnnContra_v1/ \
   --savedset /data/ganleilei/law/ContrastiveLJP/models/harnnContra_v1/data \
   --temperature 0.07 \
-  --embedding_path /data/ganleilei/law/ContrastiveLJP/cail_thulac.npy > logs/harnn_contra_v1/harnn_contra_accu_v1_alpha0.1_lr5e-4_seed${t}_bs32.log 2>&1
+  --HP_iteration 50 \
+  --embedding_path /data/ganleilei/law/ContrastiveLJP/cail_thulac.npy > logs/harnn_contra_accu_v1/harnn_contra_accu_v1_alpha0.1_lr5e-4_seed${t}_bs32.log 2>&1
 done
