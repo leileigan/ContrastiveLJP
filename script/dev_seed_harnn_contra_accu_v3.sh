@@ -9,6 +9,6 @@ do
   --savedset /data/ganleilei/law/ContrastiveLJP/models/harnnContra_v3/data \
   --moco_queue_size 65536 \
   --HP_iteration 50 \
-  --moco_base_model  /data/ganleilei/law/ContrastiveLJP/models/harnnContra_v2/epoch8.ckpt \
+  --confused_matrix /data/ganleilei/law/ContrastiveLJP/confused_matrix.npy \
   --embedding_path /data/ganleilei/law/ContrastiveLJP/cail_thulac.npy > logs/harnn_contra_accu_v3/harnn_contra_accu_v3_alpha0.1_lr5e-4_seed${t}_queue65536_bs32.log 2>&1
 done
