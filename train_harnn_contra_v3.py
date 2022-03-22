@@ -379,7 +379,7 @@ if __name__ == '__main__':
         }
 
         # load confused matrix
-        confused_matrix = pickle.load(open('/data/ganleilei/law/ContrastiveLJP/confused_matrix.npy', 'rb'))
+        confused_matrix = pickle.load(open(args.confused_matrix, 'rb'))
         model = MoCo(config, confused_matrix)
         if config.HP_gpu:
             model.cuda()
