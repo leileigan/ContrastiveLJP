@@ -218,6 +218,7 @@ def train(model, dataset, config: Config):
 
             loss.backward()
             # optimizer.step_and_update_lr()
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1)
             optimizer.step()
             model.zero_grad()
 
