@@ -10,13 +10,6 @@ import torch.nn.functional as F
 import torch.optim as optim
 import datetime
 from utils.config import Config
-import random
-
-BERT_MODEL_PATH = "/mnt/data/ganleilei/chinese_L-12_H-768_A-12/"
-SEED_NUM = 2020
-torch.manual_seed(SEED_NUM)
-random.seed(SEED_NUM)
-np.random.seed(SEED_NUM)
 
 
 def SupConLoss(temperature=0.07, contrast_mode='all', features=None, labels=None, mask=None):
