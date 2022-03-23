@@ -134,11 +134,11 @@ class LawModel(nn.Module):
         doc_rep = torch.sum(lstm2_out*attn_q_out, dim=1) #[batch_size, hidden_dim * 2]
 
         accu_logits, accu_predicts, accu_loss, law_predicts, law_loss, term_predicts, term_loss = self.classifier_layer(doc_rep, accu_labels, law_labels, term_labels)
-        return accu_logits, accu_loss, law_loss, term_loss, accu_predicts, law_predicts, term_predicts
+        return accu_logits, accu_loss, law_loss, term_loss, accu_predicts, law_predicts, term_predicts, doc_rep
 
 
 class MoCo(nn.Module):
-    def __init__(self, config: Config, confused_matrix, dim=119):
+    def __init__(self, config: Config, confused_matrix, dim=256):
         super(MoCo, self).__init__()
 
         self.K = config.moco_queue_size
@@ -212,22 +212,37 @@ class MoCo(nn.Module):
     
 
     def _get_contra_loss(self, query, accu_label_lists):
+        label_1_list = accu_label_lists.eq(1).nonzero(as_tuple=True)
+        # if label_1_list[0].size(0) > 0: 
+        #     label_1_index = label_1_list[0][0]
+        # else:
+        #     label_1_index = -1
         accu_label_lists = accu_label_lists.unsqueeze(1)
         mask = torch.eq(accu_label_lists, self.label_queue.T).float() #[bsz, queue_size]
         query_queue_product = torch.einsum('nc,kc->nk', [query, self.queue.clone().detach()])
+        # cos_sim = query_queue_product / torch.einsum('nc,kc->nk', [torch.norm(query, dim=1).unsqueeze(1), torch.norm(self.queue.clone().detach(), dim=1).unsqueeze(1)])
         query_queue_product = query_queue_product/ self.T
-        neg_mask = self._select_negative(accu_label_lists)
-        neg_mask = mask + neg_mask # pos + neg
+        hard_neg_mask = self._select_negative(accu_label_lists)
+        neg_mask = mask + hard_neg_mask # pos + neg
         exp_logits = torch.exp(query_queue_product)
         log_prob = query_queue_product - torch.log((exp_logits * neg_mask).sum(1, keepdim=True) + 1e-12) #[bsz, queue_size]
         mean_log_prob_pos = (mask * log_prob).sum(1) / (mask.sum(1) + 1e-12)
         loss = -mean_log_prob_pos.mean()
+        # if label_1_index != -1:
+            # print("label queue:", self.label_queue.squeeze())
+            # print("positive mask:", mask[label_1_index])
+            # print("positive mask select value:", torch.masked_select(query_queue_product[label_1_index], mask[label_1_index].bool()))
+            # print("positive cos sim select value:", torch.masked_select(cos_sim[label_1_index], mask[label_1_index].bool()))
+            # print("hard neg mask:", hard_neg_mask[label_1_index])
+            # print("hard neg mask select value:", torch.masked_select(query_queue_product[label_1_index], hard_neg_mask[label_1_index].bool()))
+            # print("hard neg cos sim select value:", torch.masked_select(cos_sim[label_1_index], hard_neg_mask[label_1_index].bool()))
+            # print("query queue product:", query_queue_product[label_1_index])
         return loss
 
 
     def forward(self, fact_list, accu_label_lists, law_label_lists, term_lists):
         # compute query features
-        q, accu_loss, law_loss, term_loss, accu_preds, law_preds, term_preds = self.encoder_q(fact_list, accu_label_lists, law_label_lists, term_lists)  # queries: NxC
+        _, accu_loss, law_loss, term_loss, accu_preds, law_preds, term_preds, q = self.encoder_q(fact_list, accu_label_lists, law_label_lists, term_lists)  # queries: NxC
         q = nn.functional.normalize(q, dim=1)
         # print("accu loss:", q.size())
         # compute key features
@@ -235,17 +250,20 @@ class MoCo(nn.Module):
             self._momentum_update_key_encoder()  # update the key encoder
             # shuffle for making use of BN
             #im_k, idx_unshuffle = self._batch_shuffle_ddp(im_k)
-            k, _, _, _, _, _, _ = self.encoder_k(fact_list, accu_label_lists, law_label_lists, term_lists)  # keys: NxC
+            _, _, _, _, _, _, _, k = self.encoder_k(fact_list, accu_label_lists, law_label_lists, term_lists)  # keys: NxC
             k = nn.functional.normalize(k, dim=1)
 
-            # undo shuffle
-            #k = self._batch_unshuffle_ddp(k, idx_unshuffle)
-        
         # dequeue and enqueue
         self._dequeue_and_enqueue(k, accu_label_lists)
         contra_loss = self._get_contra_loss(q, accu_label_lists)
 
         return contra_loss, accu_loss, law_loss, term_loss, accu_preds, law_preds, term_preds
+
+
+    def predict(self, fact_list, accu_label_lists, law_label_lists, term_lists):
+        # compute query features
+        _, _, _, _, accu_preds, law_preds, term_preds, q = self.encoder_q(fact_list, accu_label_lists, law_label_lists, term_lists)  # queries: NxC
+        return accu_preds, law_preds, term_preds
 
 if __name__ == '__main__':
    print(datetime.datetime.now())
