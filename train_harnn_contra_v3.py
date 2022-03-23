@@ -108,7 +108,7 @@ def evaluate(model, valid_dataloader, name):
 
     for batch_idx, datapoint in enumerate(valid_dataloader):
         fact_list, accu_label_lists, law_label_lists, term_lists = datapoint
-        _, _, _, _, accu_preds, law_preds, term_preds = model(fact_list, accu_label_lists,law_label_lists, term_lists)
+        accu_preds, law_preds, term_preds = model.predict(fact_list, accu_label_lists,law_label_lists, term_lists)
 
         ground_accu_y.extend(accu_label_lists.tolist())
         ground_law_y.extend(law_label_lists.tolist())
@@ -217,13 +217,15 @@ def train(model, dataset, config: Config):
 
             loss.backward()
             # optimizer.step_and_update_lr()
-            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1)
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=5)
+            # print("gradient:", model.encoder_q.word_embeddings_layer.weight[1853])
             optimizer.step()
             model.zero_grad()
 
         sys.stdout.flush()
 
         # evaluate dev data
+        print("Begin evaluate on dev set.")
         current_score = evaluate(model, valid_dataloader, "Dev")
 
         if current_score > best_dev:
@@ -237,7 +239,7 @@ def train(model, dataset, config: Config):
             _ = evaluate(model, test_dataloader, "Test")
         else:
             no_imporv_epoch += 1
-            if no_imporv_epoch >= 10:
+            if no_imporv_epoch >= 100:
                 print("early stop")
                 break
 
