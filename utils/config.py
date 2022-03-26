@@ -95,7 +95,6 @@ class Config:
         print("     Filter size:        :  %s" % (self.filters_size))
         print("     Number filters      :  %s" % (self.num_filters))
 
-        print("     Confused Matrix path:  %s" % (self.confused_matrix))
         print("     Temperature         :  %s" % (self.moco_temperature))
         print("     Momentum            :  %s" % (self.moco_momentum))
         print("     Queue size          :  %s" % (self.moco_queue_size))
