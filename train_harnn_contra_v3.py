@@ -6,10 +6,8 @@
 import argparse
 import copy
 import datetime
-import json
 import os
 import pickle
-import random
 import sys
 import time
 
@@ -28,10 +26,10 @@ np.set_printoptions(threshold=np.inf)
 from transformers import AutoTokenizer
 
 
-def load_model_decode(model_dir, config, dataset, name, gpu):
+def load_model(model_dir, config, gpu):
     config.HP_gpu = gpu
     print("Load Model from file: ", model_dir)
-    model = LawModel(config)
+    model = MoCo(config)
     if config.HP_gpu:
         model = model.cuda()
     ## load model need consider if the model trained in GPU and load in CPU, or vice versa
@@ -41,9 +39,9 @@ def load_model_decode(model_dir, config, dataset, name, gpu):
     # else:
     model.load_state_dict(torch.load(model_dir))
     # model = torch.load(model_dir)
-    score = evaluate(model, dataset, name)
 
-    return
+    return model
+
 
 def str2bool(params):
     return True if params.lower() == 'true' else False
@@ -100,23 +98,24 @@ def get_result(accu_target, accu_preds, law_target, law_preds, term_target, term
     return accu_macro_f1
 
 
-def evaluate(model, valid_dataloader, name):
+def evaluate(model, valid_dataloader, name, epoch_idx):
     
     model.eval()
     ground_accu_y, ground_law_y, ground_term_y  = [], [], []
     predicts_accu_y, predicts_law_y, predicts_term_y = [], [], []
 
-    for batch_idx, datapoint in enumerate(valid_dataloader):
-        fact_list, accu_label_lists, law_label_lists, term_lists = datapoint
-        accu_preds, law_preds, term_preds = model.predict(fact_list, accu_label_lists,law_label_lists, term_lists)
+    with torch.no_grad():
+        for batch_idx, datapoint in enumerate(valid_dataloader):
+            fact_list, raw_fact_list, accu_label_lists, law_label_lists, term_lists = datapoint
+            accu_preds, law_preds, term_preds = model.predict(fact_list, raw_fact_list, accu_label_lists,law_label_lists, term_lists, epoch_idx, name)
 
-        ground_accu_y.extend(accu_label_lists.tolist())
-        ground_law_y.extend(law_label_lists.tolist())
-        ground_term_y.extend(term_lists.tolist())
+            ground_accu_y.extend(accu_label_lists.tolist())
+            ground_law_y.extend(law_label_lists.tolist())
+            ground_term_y.extend(term_lists.tolist())
 
-        predicts_accu_y.extend(accu_preds.tolist())
-        predicts_law_y.extend(law_preds.tolist())
-        predicts_term_y.extend(term_preds.tolist())
+            predicts_accu_y.extend(accu_preds.tolist())
+            predicts_law_y.extend(law_preds.tolist())
+            predicts_term_y.extend(term_preds.tolist())
 
     accu_accuracy = accuracy_score(ground_accu_y, predicts_accu_y)
     law_accuracy = accuracy_score(ground_law_y, predicts_law_y)
@@ -176,7 +175,7 @@ def train(model, dataset, config: Config):
         ground_term_y, predicts_term_y = [], []
 
         for batch_idx, datapoint in enumerate(train_dataloader):
-            fact_list, accu_label_lists, law_label_lists, term_lists = datapoint
+            fact_list, _, accu_label_lists, law_label_lists, term_lists = datapoint
             cl_loss, accu_loss, law_loss, term_loss, accu_preds, law_preds, term_preds = model(fact_list, accu_label_lists, law_label_lists, term_lists)
             # print("accu loss: %.2f, law loss: %.2f, term loss: %.2f, cl loss: %.2f" % (accu_loss, law_loss, term_loss, cl_loss))
             if idx >= config.warm_epoch:
@@ -217,7 +216,7 @@ def train(model, dataset, config: Config):
 
             loss.backward()
             # optimizer.step_and_update_lr()
-            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=5)
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=config.HP_clip)
             # print("gradient:", model.encoder_q.word_embeddings_layer.weight[1853])
             optimizer.step()
             model.zero_grad()
@@ -226,7 +225,7 @@ def train(model, dataset, config: Config):
 
         # evaluate dev data
         print("Begin evaluate on dev set.")
-        current_score = evaluate(model, valid_dataloader, "Dev")
+        current_score = evaluate(model, valid_dataloader, "Dev", idx)
 
         if current_score > best_dev:
             print("Exceed previous best acc score:", best_dev)
@@ -236,7 +235,7 @@ def train(model, dataset, config: Config):
             model_name = config.save_model_dir + f"epoch{str(idx)}.ckpt"
             torch.save(model.state_dict(), model_name)
             # evaluate test data
-            _ = evaluate(model, test_dataloader, "Test")
+            _ = evaluate(model, test_dataloader, "Test", idx)
         else:
             no_imporv_epoch += 1
             if no_imporv_epoch >= 100:
@@ -285,11 +284,10 @@ if __name__ == '__main__':
     parser.add_argument('--loadmodel', default="")
 
     parser.add_argument('--embedding_path', default='/data/home/ganleilei/law/ContrastiveLJP/cail_thulac.npy')
+    parser.add_argument('--word2id_dict', default='/data/ganleilei/law/ContrastiveLJP/w2id_thulac.pkl')
+
     parser.add_argument('--word_emb_dim', default=200)
     parser.add_argument('--MAX_SENTENCE_LENGTH', default=510)
-    parser.add_argument('--hops', default=3)
-    parser.add_argument('--heads', default=4)
-    parser.add_argument('--max_decoder_step', default=100)
 
     parser.add_argument('--HP_iteration', default=30, type=int)
     parser.add_argument('--HP_batch_size', default=128, type=int)
@@ -347,8 +345,13 @@ if __name__ == '__main__':
         config.moco_momentum = args.moco_momentum
         config.warm_epoch = args.warm_epoch
         config.alpha = args.alpha
-        
+        config.word2id_dict = pickle.load(open(args.word2id_dict, 'rb'))
+        config.id2word_dict = {item[1]: item[0] for item in config.word2id_dict.items()}
+        config.bert_path = args.bert_path
+        # load confused matrix
+        config.confused_matrix = pickle.load(open(args.confused_matrix, 'rb'))
         config.load_word_pretrain_emb(args.embedding_path)
+
         save_data_setting(config, config.save_dset_dir + '.dset')
         config.show_data_summary()
         
@@ -364,25 +367,23 @@ if __name__ == '__main__':
         else:
             sample_train_data = train_data
         
-        train_dataset = CustomDataset(sample_train_data, tokenizer, config.MAX_SENTENCE_LENGTH)
-        valid_dataset = CustomDataset(valid_data, tokenizer, config.MAX_SENTENCE_LENGTH)
-        test_dataset = CustomDataset(test_data, tokenizer, config.MAX_SENTENCE_LENGTH)
+        train_dataset = CustomDataset(sample_train_data, tokenizer, config.MAX_SENTENCE_LENGTH, config.id2word_dict)
+        valid_dataset = CustomDataset(valid_data, tokenizer, config.MAX_SENTENCE_LENGTH, config.id2word_dict)
+        test_dataset = CustomDataset(test_data, tokenizer, config.MAX_SENTENCE_LENGTH, config.id2word_dict)
 
         train_dataloader = DataLoader(train_dataset, batch_size=config.HP_batch_size, shuffle=True, collate_fn=collate_qa_fn, drop_last=True)
         valid_dataloader = DataLoader(valid_dataset, batch_size=config.HP_batch_size, shuffle=False, collate_fn=collate_qa_fn, drop_last=True)
         test_dataloader = DataLoader(test_dataset, batch_size=config.HP_batch_size, shuffle=False, collate_fn=collate_qa_fn, drop_last=True)
 
-        print("train_data %d, valid_data %d, test_data %d." % (
-            len(train_dataset), len(valid_dataset), len(test_dataset)))
+        print("train_data %d, valid_data %d, test_data %d." % (len(train_dataset), len(valid_dataset), len(test_dataset)))
         data_dict = {
             "train_dataloader": train_dataloader,
             "test_dataloader": test_dataloader,
             "valid_dataloader": valid_dataloader
         }
 
-        # load confused matrix
-        confused_matrix = pickle.load(open(args.confused_matrix, 'rb'))
-        model = MoCo(config, confused_matrix)
+        
+        model = MoCo(config)
         if config.HP_gpu:
             model.cuda()
         
@@ -394,4 +395,16 @@ if __name__ == '__main__':
             print('File path does not exit: %s and %s' % (args.loadmodel, args.savedset))
             exit(1)
 
-        config = load_data_setting(args.savedset)
+        config: Config = load_data_setting(args.savedset)
+        tokenizer = AutoTokenizer.from_pretrained(config.bert_path)
+        train_data, valid_data, test_data = load_dataset(args.data_path)
+        train_dataset = CustomDataset(train_data, tokenizer, config.MAX_SENTENCE_LENGTH, config.id2word_dict)
+        valid_dataset = CustomDataset(valid_data, tokenizer, config.MAX_SENTENCE_LENGTH, config.id2word_dict)
+        test_dataset = CustomDataset(test_data, tokenizer, config.MAX_SENTENCE_LENGTH, config.id2word_dict)
+        train_dataloader = DataLoader(train_dataset, batch_size=config.HP_batch_size, shuffle=False, collate_fn=collate_qa_fn)
+        valid_dataloader = DataLoader(valid_dataset, batch_size=config.HP_batch_size, shuffle=False, collate_fn=collate_qa_fn)
+        test_dataloader = DataLoader(test_dataset, batch_size=config.HP_batch_size, shuffle=False, collate_fn=collate_qa_fn)
+
+        print("\nFinish loading data!")
+        model = load_model(args.loadmodel, config, True)
+        score = evaluate(model, test_dataloader, "Test", -1)

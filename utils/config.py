@@ -23,6 +23,8 @@ class Config:
         self.word_emb_dim = 200
         self.pretrain_word_embedding = None
         self.word2id_dict = None
+        self.id2word_dict = None
+        self.bert_path = None
 
         self.accu_label_size = 119
         self.law_label_size = 103
@@ -67,14 +69,16 @@ class Config:
         self.moco_momentum = 0.999
         self.alpha = 0.1
         self.warm_epoch = 0
+        self.confused_matrix = None
+
 
     def show_data_summary(self):
         print("DATA SUMMARY START:")
         print("     MAX SENTENCE LENGTH: %s" % (self.MAX_SENTENCE_LENGTH))
         print("     Word embedding size: %s" % (self.word_emb_dim))
-
+        print("     Bert Path:           %s" % (self.bert_path))
         print("     Accu label     size: %s" % (self.accu_label_size))
-        print("     Law label     size: %s" % (self.law_label_size))
+        print("     Law label     size:  %s" % (self.law_label_size))
         print("     Term label     size: %s" % (self.term_label_size))
 
         print("     Hyperpara  iteration: %s" % (self.HP_iteration))
@@ -91,6 +95,7 @@ class Config:
         print("     Filter size:        :  %s" % (self.filters_size))
         print("     Number filters      :  %s" % (self.num_filters))
 
+        print("     Confused Matrix path:  %s" % (self.confused_matrix))
         print("     Temperature         :  %s" % (self.moco_temperature))
         print("     Momentum            :  %s" % (self.moco_momentum))
         print("     Queue size          :  %s" % (self.moco_queue_size))
