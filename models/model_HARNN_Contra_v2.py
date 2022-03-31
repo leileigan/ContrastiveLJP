@@ -82,8 +82,6 @@ class LawModel(nn.Module):
         :param term_labels: [batch_size]
         """
         accu_logits = self.accu_classifier(doc_out)  # [batch_size, accu_label_size]
-        doc_out_dropout = doc_out.clone().detach()
-        accu_logits_dropout = self.accu_classifier(doc_out_dropout)
         accu_probs = F.softmax(accu_logits, dim=-1)
         accu_log_softmax = F.log_softmax(accu_logits, dim=-1)
         accu_loss = self.accu_loss(accu_log_softmax, accu_labels)
@@ -156,7 +154,7 @@ class MoCo(nn.Module):
 
         # create the queue
         self.register_buffer("feature_queue", torch.randn(self.K, dim))
-        self.queue = nn.functional.normalize(self.feature_queue.cuda(), dim=1)
+        self.feature_queue = nn.functional.normalize(self.feature_queue.cuda(), dim=1)
 
         self.register_buffer("label_queue", torch.randint(-1, 0, (self.K, 1)))
         self.label_queue = self.label_queue.cuda()
@@ -172,38 +170,79 @@ class MoCo(nn.Module):
 
     @torch.no_grad()
     def _dequeue_and_enqueue(self, keys, accu_label_lists):
+        """
+        keys: [bsz, 119]
+        accu_label_lists: [bsz]
+        """
         batch_size = keys.shape[0]
+        label_keys = accu_label_lists.unsqueeze(1)
         ptr = int(self.queue_ptr)
 
-        # if ptr+batch_size > self.K:
-        #     head_size = self.K - ptr
-        #     head_keys = keys[: head_size]
-        #     end_size = ptr + batch_size - self.K
-        #     end_keys = keys[head_size:]
-        #     self.queue[ptr:, :] = head_keys
-        #     self.queue[:end_size, :] = end_keys
-        # else:
-        #     # replace the keys at ptr (dequeue and enqueue)
-        #     self.queue[ptr:ptr + batch_size, :] = keys
-        assert self.K % batch_size == 0
+        if ptr+batch_size > self.K:
+            head_size = self.K - ptr
+            head_keys = keys[: head_size]
+            head_labels = label_keys[: head_size]
 
-        self.queue[ptr:ptr+batch_size, :] = keys
-        self.label_queue[ptr:ptr+batch_size, :] = accu_label_lists.unsqueeze(1)
+            end_size = ptr + batch_size - self.K
+            end_keys = keys[head_size:]
+            end_labels = label_keys[head_size: ]
+
+            self.feature_queue[ptr:, :] = head_keys
+            self.label_queue[ptr:, :] = head_labels
+
+            self.feature_queue[:end_size, :] = end_keys
+            self.label_queue[:end_size, :] = end_labels
+        else:
+            # replace the keys at ptr (dequeue and enqueue)
+            self.feature_queue[ptr:ptr + batch_size, :] = keys
+            self.label_queue[ptr:ptr+batch_size, :] = label_keys
+
         ptr = (ptr + batch_size) % self.K  # move pointer
         self.queue_ptr[0] = ptr
         self.label_ptr[0] = ptr
 
 
     def _get_contra_loss(self, query, accu_label_lists):
+        label_1_list = accu_label_lists.eq(1).nonzero(as_tuple=True)
+        if label_1_list[0].size(0) > 0: 
+            label_1_index = label_1_list[0][0]
+        else:
+            label_1_index = -1
         accu_label_lists = accu_label_lists.unsqueeze(1)
         mask = torch.eq(accu_label_lists, self.label_queue.T).float() #[bsz, queue_size]
-        query_queue_product = torch.einsum('nc,kc->nk', [query, self.queue.clone().detach()])
-        query_queue_product = query_queue_product/ self.T
-        exp_logits = torch.exp(query_queue_product)
-        log_prob = query_queue_product - torch.log(exp_logits.sum(1, keepdim=True) + 1e-12) #[bsz, queue_size]
-        mean_log_prob_pos = (mask * log_prob).sum(1) / (mask.sum(1) + 1e-12)
+        query_queue_product = torch.einsum('nc,kc->nk', [query, self.feature_queue.clone().detach()])
+        cos_sim = query_queue_product / torch.einsum('nc,kc->nk', [torch.norm(query, dim=1).unsqueeze(1), torch.norm(self.feature_queue.clone().detach(), dim=1).unsqueeze(1)])
+        cos_sim_with_t = cos_sim/ self.T #[bsz, queue_size]
+        neg_mask = torch.ne(accu_label_lists, self.label_queue.T).float() #[bsz, queue_size]
+        # negative_sim: [bsz, 1] #所有负样本的和
+        negative_sim_sum = (torch.exp(cos_sim_with_t) * neg_mask).sum(1, keepdim=True) #[bsz, 1]
+        # positive_sim: [bsz, queue_size] #样本和队列里每个正样本的乘积
+        positive_sim = torch.exp(cos_sim_with_t) #[bsz, queue_size]
+        # sim_sum:  [bsz, queue_size]
+        exp_logits = negative_sim_sum + positive_sim
+        log_exp_logits = torch.log(exp_logits + 1e-12)
+        # exp_logits = torch.exp(cos_sim_with_t)
+        # log_exp_logits = torch.log((exp_logits * sum_mask).sum(1, keepdim=True) + 1e-12)
+        log_prob = cos_sim_with_t - log_exp_logits #[bsz, queue_size]
+        mean_log_prob_pos = (mask * log_prob).sum(1) / (mask.sum(1) + 1e-12) #[bsz]
         loss = -mean_log_prob_pos.mean()
-        return loss
+        # if label_1_index != -1:
+        #     # print("label queue:", self.label_queue.squeeze())
+        #     # print("positive mask:", mask[label_1_index])
+        #     print("positive cos sim select value:", torch.masked_select(
+        #         cos_sim[label_1_index], mask[label_1_index].bool()).sort(dim=-1, descending=False)[0][:300])
+        #     print("positive cos sim average value:", torch.masked_select(cos_sim[label_1_index], mask[label_1_index].bool()).mean())
+        #     # print("hard neg mask:", hard_neg_mask[label_1_index])
+        #     # print("hard neg mask select value:", torch.masked_select(query_queue_product[label_1_index], hard_neg_mask[label_1_index].bool()))
+        #     print("neg cos sim select value:", torch.masked_select(
+        #         cos_sim[label_1_index], neg_mask[label_1_index].bool()).sort(dim=-1, descending=True)[0][:300])
+        #     print("neg cos sim average value:", torch.masked_select(
+        #         cos_sim[label_1_index], neg_mask[label_1_index].bool()).mean())
+        #     # print("log exp logits select value:", log_exp_logits[label_1_index])
+        #     # print("log prob select value:", torch.masked_select(log_prob[label_1_index], mask[label_1_index].bool())[0][:300])
+        #     # print("mean log prob select value:", mean_log_prob_pos)
+        #     # print("query queue product:", query_queue_product[label_1_index])
+        return loss, label_1_index
 
 
     def forward(self, fact_list, accu_label_lists, law_label_lists, term_lists):
@@ -224,9 +263,21 @@ class MoCo(nn.Module):
         
         # dequeue and enqueue
         self._dequeue_and_enqueue(k, accu_label_lists)
-        contra_loss = self._get_contra_loss(q, accu_label_lists)
+        contra_loss, _ = self._get_contra_loss(q, accu_label_lists)
 
         return contra_loss, accu_loss, law_loss, term_loss, accu_preds, law_preds, term_preds
+
+    def predict(self, fact_list, raw_fact_list, accu_label_lists, law_label_lists, term_lists, epoch_idx, name):
+        # compute query features
+        q, _, _, _, accu_preds, law_preds, term_preds = self.encoder_q(fact_list, accu_label_lists, law_label_lists, term_lists)  # queries: NxC
+        contra_loss, label_1_index = self._get_contra_loss(q, accu_label_lists)
+        # if label_1_index != -1:
+        #     print(
+        #         f"Epoch: {epoch_idx}, Name: {name}, contra loss: {contra_loss.item()}, accu preds: {accu_preds[label_1_index].item()}, ground truth label: {accu_label_lists[label_1_index].item()}")
+        #     print(''.join(raw_fact_list[label_1_index]))
+        
+        return accu_preds, law_preds, term_preds
+
 
 if __name__ == '__main__':
    print(datetime.datetime.now())

@@ -6,7 +6,6 @@
 import argparse
 import copy
 import datetime
-from email.policy import default
 import json
 import os
 import pickle
@@ -98,19 +97,19 @@ def get_result(accu_target, accu_preds, law_target, law_preds, term_target, term
     print("Law task: macro_f1:%.4f, macro_precision:%.4f, macro_recall:%.4f" % (law_macro_f1, law_macro_precision, law_macro_recall))
     print("Term task: macro_f1:%.4f, macro_precision:%.4f, macro_recall:%.4f" % (term_macro_f1, term_macro_precision, term_macro_recall))
 
-    return (accu_macro_f1 + law_macro_f1 + term_macro_f1) / 3
-    # return accu_macro_f1
+    # return (accu_macro_f1 + law_macro_f1 + term_macro_f1) / 3
+    return accu_macro_f1
 
 
-def evaluate(model, valid_dataloader, name):
+def evaluate(model, valid_dataloader, name, epoch_idx):
     
     model.eval()
     ground_accu_y, ground_law_y, ground_term_y  = [], [], []
     predicts_accu_y, predicts_law_y, predicts_term_y = [], [], []
 
     for batch_idx, datapoint in enumerate(valid_dataloader):
-        fact_list, accu_label_lists, law_label_lists, term_lists = datapoint
-        _, _, _, _, accu_preds, law_preds, term_preds = model(fact_list, accu_label_lists,law_label_lists, term_lists)
+        fact_list, raw_fact_list, accu_label_lists, law_label_lists, term_lists = datapoint
+        accu_preds, law_preds, term_preds = model.predict(fact_list, raw_fact_list, accu_label_lists,law_label_lists, term_lists, epoch_idx, name)
 
         ground_accu_y.extend(accu_label_lists.tolist())
         ground_law_y.extend(law_label_lists.tolist())
@@ -127,7 +126,8 @@ def evaluate(model, valid_dataloader, name):
     # confused_matrix_law = confusion_matrix(ground_law_y, predicts_law_y)
     # confused_matrix_term = confusion_matrix(ground_term_y, predicts_term_y)
     print("Accu task accuracy: %.4f, Law task accuracy: %.4f, Term task accuracy: %.4f" % (accu_accuracy, law_accuracy, term_accuracy)) 
-    print("Confused matrix accu:", confused_matrix_accu[1])
+    print("Confused matrix accu of 寻衅滋事罪:", confused_matrix_accu[1])
+    print("Confused matrix accu of 故意伤害罪:", confused_matrix_accu[111])
     # print("Confused matrix law:", confused_matrix_law)
     # print("Confused matirx term:", confused_matrix_term)
     score = get_result(ground_accu_y, predicts_accu_y, ground_law_y, predicts_law_y, ground_term_y, predicts_term_y, name)
@@ -141,9 +141,9 @@ def train(model, dataset, config: Config):
     valid_data_set = dataset["valid_data_set"]
     test_data_set = dataset["test_data_set"]
     print("config batch size:", config.HP_batch_size)
-    train_dataloader = DataLoader(train_data_set, batch_size=config.HP_batch_size, shuffle=True, collate_fn=collate_qa_fn, drop_last=True)
-    valid_dataloader = DataLoader(valid_data_set, batch_size=config.HP_batch_size, shuffle=False, collate_fn=collate_qa_fn, drop_last=True)
-    test_dataloader = DataLoader(test_data_set, batch_size=config.HP_batch_size, shuffle=False, collate_fn=collate_qa_fn, drop_last=True)
+    train_dataloader = DataLoader(train_data_set, batch_size=config.HP_batch_size, shuffle=True, collate_fn=collate_qa_fn)
+    valid_dataloader = DataLoader(valid_data_set, batch_size=config.HP_batch_size, shuffle=False, collate_fn=collate_qa_fn)
+    test_dataloader = DataLoader(test_data_set, batch_size=config.HP_batch_size, shuffle=False, collate_fn=collate_qa_fn)
 
     print("Training model...")
     print(model)
@@ -180,7 +180,7 @@ def train(model, dataset, config: Config):
         ground_term_y, predicts_term_y = [], []
 
         for batch_idx, datapoint in enumerate(train_dataloader):
-            fact_list, accu_label_lists, law_label_lists, term_lists = datapoint
+            fact_list, _, accu_label_lists, law_label_lists, term_lists = datapoint
             cl_loss, accu_loss, law_loss, term_loss, accu_preds, law_preds, term_preds = model(fact_list, accu_label_lists, law_label_lists, term_lists)
             # print("accu loss: %.2f, law loss: %.2f, term loss: %.2f, cl loss: %.2f" % (accu_loss, law_loss, term_loss, cl_loss))
             if idx >= config.warm_epoch:
@@ -219,7 +219,7 @@ def train(model, dataset, config: Config):
                 sample_cl_loss = 0
 
             loss.backward()
-            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1)
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=config.HP_clip)
             # optimizer.step_and_update_lr()
             optimizer.step()
             model.zero_grad()
@@ -227,7 +227,7 @@ def train(model, dataset, config: Config):
         sys.stdout.flush()
 
         # evaluate dev data
-        current_score = evaluate(model, valid_dataloader, "Dev")
+        current_score = evaluate(model, valid_dataloader, "Dev", idx)
 
         if current_score > best_dev:
             print("Exceed previous best acc score:", best_dev)
@@ -237,10 +237,10 @@ def train(model, dataset, config: Config):
             model_name = config.save_model_dir + f"epoch{str(idx)}.ckpt"
             torch.save(model.state_dict(), model_name)
             # evaluate test data
-            _ = evaluate(model, test_dataloader, "Test")
+            _ = evaluate(model, test_dataloader, "Test", idx)
         else:
             no_imporv_epoch += 1
-            if no_imporv_epoch >= 10:
+            if no_imporv_epoch >= 30:
                 print("early stop")
                 break
 
@@ -255,12 +255,11 @@ if __name__ == '__main__':
     parser.add_argument('--loadmodel', default="")
 
     parser.add_argument('--embedding_path', default='/data/home/ganleilei/law/ContrastiveLJP/cail_thulac.npy')
+    parser.add_argument('--word2id_dict', default='/data/ganleilei/law/ContrastiveLJP/w2id_thulac.pkl')
+
     parser.add_argument('--word_emb_dim', default=200)
     parser.add_argument('--MAX_SENTENCE_LENGTH', default=510)
-    parser.add_argument('--hops', default=3)
-    parser.add_argument('--heads', default=4)
-    parser.add_argument('--max_decoder_step', default=100)
-
+    
     parser.add_argument('--HP_iteration', default=30, type=int)
     parser.add_argument('--HP_batch_size', default=128, type=int)
     parser.add_argument('--HP_hidden_dim', default=256, type=int)
@@ -273,7 +272,6 @@ if __name__ == '__main__':
 
     parser.add_argument('--use_warmup_adam', default='False')
     parser.add_argument('--use_adam', default='True')
-    parser.add_argument('--temperature', default=0.7, type=float)
     parser.add_argument('--alpha', default=0.1, type=float)
     parser.add_argument('--warm_epoch', default=0, type=int)
     parser.add_argument('--seed', default=2022, type=int)
@@ -290,48 +288,39 @@ if __name__ == '__main__':
     status = args.status
 
     if status == 'train':
-        if os.path.exists(args.loadmodel) and os.path.exists(args.savedset):
-            print('Load model path:', args.loadmodel)
-            print('Load save dataset:', args.savedset)
-            config: Config = load_data_setting(args.savedset)
-            model = LawModel(config)
-            model.load_state_dict(torch.load(args.loadmodel))
-        else:
-            print('New config....')
-            config = Config()
-            config.HP_iteration = args.HP_iteration
-            config.HP_batch_size = args.HP_batch_size
-            config.HP_hidden_dim = args.HP_hidden_dim
-            config.HP_dropout = args.HP_dropout
-            config.HP_lstm_layer = args.HP_lstm_layer
-            config.HP_lr = args.HP_lr
-            config.MAX_SENTENCE_LENGTH = args.MAX_SENTENCE_LENGTH
-            config.HP_lr_decay = args.HP_lr_decay
-            config.save_model_dir = args.savemodel
-            config.HP_freeze_word_emb = args.HP_freeze_word_emb
-            if not os.path.exists(config.save_model_dir):
-                os.mkdir(config.save_model_dir)
+        print('New config....')
+        config = Config()
+        config.HP_iteration = args.HP_iteration
+        config.HP_batch_size = args.HP_batch_size
+        config.HP_hidden_dim = args.HP_hidden_dim
+        config.HP_dropout = args.HP_dropout
+        config.HP_lstm_layer = args.HP_lstm_layer
+        config.HP_lr = args.HP_lr
+        config.MAX_SENTENCE_LENGTH = args.MAX_SENTENCE_LENGTH
+        config.HP_lr_decay = args.HP_lr_decay
+        config.save_model_dir = args.savemodel
+        config.HP_freeze_word_emb = args.HP_freeze_word_emb
+        if not os.path.exists(config.save_model_dir):
+            os.mkdir(config.save_model_dir)
 
-            config.save_dset_dir = args.savedset
-            if not os.path.exists(config.save_dset_dir):
-                os.mkdir(config.save_dset_dir)
-            
-            config.use_warmup_adam = str2bool(args.use_warmup_adam)
-            config.use_adam = str2bool(args.use_adam)
-            config.moco_temperature = args.moco_temperature
-            config.moco_queue_size = args.moco_queue_size
-            config.moco_momentum = args.moco_momentum
-            config.warm_epoch = args.warm_epoch
-            config.alpha = args.alpha
-            
-            config.load_word_pretrain_emb(args.embedding_path)
-            save_data_setting(config, config.save_dset_dir + '.dset')
-            model = MoCo(config)
+        config.save_dset_dir = args.savedset
+        if not os.path.exists(config.save_dset_dir):
+            os.mkdir(config.save_dset_dir)
+        
+        config.use_warmup_adam = str2bool(args.use_warmup_adam)
+        config.use_adam = str2bool(args.use_adam)
+        config.moco_temperature = args.moco_temperature
+        config.moco_queue_size = args.moco_queue_size
+        config.moco_momentum = args.moco_momentum
+        config.warm_epoch = args.warm_epoch
+        config.alpha = args.alpha
+        config.word2id_dict = pickle.load(open(args.word2id_dict, 'rb'))
+        config.id2word_dict = {item[1]: item[0] for item in config.word2id_dict.items()}
+        config.bert_path = args.bert_path
 
+        config.load_word_pretrain_emb(args.embedding_path)
+        save_data_setting(config, config.save_dset_dir + '.dset')
         config.show_data_summary()
-
-        if config.HP_gpu:
-            model.cuda()
 
         print("\nLoading data...")
         tokenizer = AutoTokenizer.from_pretrained(args.bert_path)
@@ -345,9 +334,9 @@ if __name__ == '__main__':
         else:
             sample_train_data = train_data
         
-        train_dataset = CustomDataset(sample_train_data, tokenizer, config.MAX_SENTENCE_LENGTH)
-        valid_dataset = CustomDataset(valid_data, tokenizer, config.MAX_SENTENCE_LENGTH)
-        test_dataset = CustomDataset(test_data, tokenizer, config.MAX_SENTENCE_LENGTH)
+        train_dataset = CustomDataset(sample_train_data, tokenizer, config.MAX_SENTENCE_LENGTH, config.id2word_dict)
+        valid_dataset = CustomDataset(valid_data, tokenizer, config.MAX_SENTENCE_LENGTH, config.id2word_dict)
+        test_dataset = CustomDataset(test_data, tokenizer, config.MAX_SENTENCE_LENGTH, config.id2word_dict)
 
         print("train_data %d, valid_data %d, test_data %d." % (
             len(train_dataset), len(valid_dataset), len(test_dataset)))
@@ -356,7 +345,11 @@ if __name__ == '__main__':
             "test_data_set": test_dataset,
             "valid_data_set": valid_dataset
         }
-        
+
+        model = MoCo(config)
+        if config.HP_gpu:
+            model.cuda()
+
         print("\nTraining...")
         train(model, data_dict, config)
 
