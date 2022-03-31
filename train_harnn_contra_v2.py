@@ -234,15 +234,16 @@ def train(model, dataset, config: Config):
             no_imporv_epoch = 0
             best_dev = current_score
             # save model
-            model_name = config.save_model_dir + f"epoch{str(idx)}.ckpt"
+            model_name = os.path.join(config.save_model_dir + "best.ckpt")
             torch.save(model.state_dict(), model_name)
-            # evaluate test data
-            _ = evaluate(model, test_dataloader, "Test", idx)
         else:
             no_imporv_epoch += 1
             if no_imporv_epoch >= 30:
                 print("early stop")
                 break
+        
+        # evaluate test data
+        _ = evaluate(model, test_dataloader, "Test", idx)
 
 
 if __name__ == '__main__':
@@ -251,7 +252,6 @@ if __name__ == '__main__':
     parser.add_argument('--data_path', default="/data/home/ganleilei/law/ContrastiveLJP/")
     parser.add_argument('--status', default="train")
     parser.add_argument('--savemodel', default="/data/home/ganleilei/law/ContrastiveLJP/models/harnnContra_v2/")
-    parser.add_argument('--savedset', default="/data/home/ganleilei/law/ContrastiveLJP/models/harnnContra_v2/data")
     parser.add_argument('--loadmodel', default="")
 
     parser.add_argument('--embedding_path', default='/data/home/ganleilei/law/ContrastiveLJP/cail_thulac.npy')
@@ -303,10 +303,6 @@ if __name__ == '__main__':
         if not os.path.exists(config.save_model_dir):
             os.mkdir(config.save_model_dir)
 
-        config.save_dset_dir = args.savedset
-        if not os.path.exists(config.save_dset_dir):
-            os.mkdir(config.save_dset_dir)
-        
         config.use_warmup_adam = str2bool(args.use_warmup_adam)
         config.use_adam = str2bool(args.use_adam)
         config.moco_temperature = args.moco_temperature
@@ -319,7 +315,7 @@ if __name__ == '__main__':
         config.bert_path = args.bert_path
 
         config.load_word_pretrain_emb(args.embedding_path)
-        save_data_setting(config, config.save_dset_dir + '.dset')
+        save_data_setting(config, os.path.join(config.save_model_dir, 'data.dset'))
         config.show_data_summary()
 
         print("\nLoading data...")
