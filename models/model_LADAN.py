@@ -14,17 +14,8 @@ import datetime
 from utils.config import Config
 import random, math
 from typing import List
-from allennlp.modules import FeedForward
-from allennlp.nn.activations import Activation
 
 from law_processed.law_processed import get_law_graph
-
-BERT_MODEL_PATH = "/mnt/data/ganleilei/chinese_L-12_H-768_A-12/"
-SEED_NUM = 2020
-torch.manual_seed(SEED_NUM)
-random.seed(SEED_NUM)
-np.random.seed(SEED_NUM)
-
 
 def dynamic_partition(data, partitions, num_partitions):
     """
@@ -164,7 +155,7 @@ class LawModel(nn.Module):
         self.term_loss = torch.nn.NLLLoss()
 
         ### init graph
-        self.law_input, graph_list_1, graph_membership, neigh_index = get_law_graph(self.law_relation_threshold, '/data/home/ganleilei/law/ContrastiveLJP/w2id_thulac.pkl', 15, 100)
+        self.law_input, graph_list_1, graph_membership, neigh_index = get_law_graph(self.law_relation_threshold, config.word2id_dict, 15, 100)
         self.law_input = torch.from_numpy(self.law_input).cuda()
         self.max_graph = len(graph_list_1)
         self.deg_list = [len(neigh_index[i]) for i in range(103)]

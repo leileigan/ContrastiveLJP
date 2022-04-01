@@ -16,22 +16,16 @@ import time
 import numpy as np
 import torch
 from sklearn.metrics import (accuracy_score, classification_report, f1_score,
-                             precision_score, recall_score)
+                             precision_score, recall_score, confusion_matrix)
 from torch import optim
 from torch.utils.data.dataloader import DataLoader
 
 from models.model_LADAN import LawModel
-from utils.config import Config
-from utils.functions import load_data
+from utils.config import Config, seed_rand
 from utils.optim import ScheduledOptim
 from data.dataset import load_dataset, CustomDataset, collate_qa_fn
 from transformers import AutoTokenizer
 from law_processed.law_processed import get_law_graph
-
-SEED_NUM = 2020
-torch.manual_seed(SEED_NUM)
-random.seed(SEED_NUM)
-np.random.seed(SEED_NUM)
 
 
 def load_model_decode(model_dir, config, dataset, name, gpu):
@@ -97,18 +91,6 @@ def get_result(accu_target, accu_preds, law_target, law_preds, term_target, term
     return (accu_macro_f1 + law_macro_f1 + term_macro_f1) / 3
 
 
-def data_initialization(data, train_file, dev_file, test_file):
-    print('begin building word alphabet set')
-    data.build_alphabet(train_file)
-    data.build_alphabet(dev_file)
-    data.build_alphabet(test_file)
-    data.fix_alphabet()
-    print('word alphabet size:', data.word_alphabet_size)
-    print('label alphabet size:', data.label_alphabet_size)
-    print('label alphabet:', data.label_alphabet.instances)
-    return data
-
-
 def evaluate(model, valid_dataloader, name):
 
     model.eval()
@@ -116,7 +98,7 @@ def evaluate(model, valid_dataloader, name):
     predicts_accu_y, predicts_law_y, predicts_term_y = [], [], []
 
     for batch_idx, datapoint in enumerate(valid_dataloader):
-        fact_list, accu_label_lists, law_label_lists, term_lists = datapoint
+        fact_list, _, accu_label_lists, law_label_lists, term_lists = datapoint
         _, _, _, _, _, accu_preds, law_preds, term_preds, law_article_preds, graph_preds = model.forward(fact_list, accu_label_lists,law_label_lists, term_lists, config.sent_len, config.doc_len)
 
         ground_accu_y.extend(accu_label_lists.tolist())
@@ -130,6 +112,12 @@ def evaluate(model, valid_dataloader, name):
     accu_accuracy = accuracy_score(ground_accu_y, predicts_accu_y)
     law_accuracy = accuracy_score(ground_law_y, predicts_law_y)
     term_accuracy = accuracy_score(ground_term_y, predicts_term_y)
+    confused_matrix_accu = confusion_matrix(ground_accu_y, predicts_accu_y)
+    confused_matrix_law = confusion_matrix(ground_law_y, predicts_law_y)
+    confused_matrix_term = confusion_matrix(ground_term_y, predicts_term_y)
+    
+    print("Confused matrix accu of 寻衅滋事罪:", confused_matrix_accu[1])
+    print("Confused matrix accu of 故意伤害罪:", confused_matrix_accu[111])
     print("%s, Accu task accuracy: %.4f, Law task accuracy: %.4f, Term task accuracy: %.4f" % (name, accu_accuracy, law_accuracy, term_accuracy)) 
     score = get_result(ground_accu_y, predicts_accu_y, ground_law_y, predicts_law_y, ground_term_y, predicts_term_y, name)
 
@@ -181,7 +169,7 @@ def train(model, dataset, config: Config):
         ground_term_y, predicts_term_y = [], []
 
         for batch_idx, datapoint in enumerate(train_dataloader):
-            fact_list, accu_label_lists, law_label_lists, term_lists = datapoint
+            fact_list, _, accu_label_lists, law_label_lists, term_lists = datapoint
             accu_loss, law_loss, term_loss, law_article_loss, graph_choose_loss, accu_preds, law_preds, term_preds, law_article_preds, graph_preds = \
                 model.forward(fact_list, accu_label_lists, law_label_lists, term_lists, config.sent_len, config.doc_len)
 
@@ -199,11 +187,10 @@ def train(model, dataset, config: Config):
             predicts_law_y.extend(law_preds.tolist())
             predicts_term_y.extend(term_preds.tolist())
 
-            cur_accu_accuracy = accuracy_score(ground_accu_y, predicts_accu_y)
-            cur_law_accuracy = accuracy_score(ground_law_y, predicts_law_y)
-            cur_term_accuracy = accuracy_score(ground_term_y, predicts_term_y)
-
             if (batch_idx + 1 ) % 100 == 0:
+                cur_accu_accuracy = accuracy_score(ground_accu_y, predicts_accu_y)
+                cur_law_accuracy = accuracy_score(ground_law_y, predicts_law_y)
+                cur_term_accuracy = accuracy_score(ground_term_y, predicts_term_y)
                 temp_time = time.time()
                 temp_cost = temp_time - temp_start
                 temp_start = temp_time
@@ -216,7 +203,7 @@ def train(model, dataset, config: Config):
                 sample_term_loss = 0
 
             loss.backward()
-            # optimizer.step_and_update_lr()
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=config.HP_clip)
             optimizer.step()
             model.zero_grad()
 
@@ -230,15 +217,15 @@ def train(model, dataset, config: Config):
             no_imporv_epoch = 0
             best_dev = current_score
             # save model
-            model_name = config.save_model_dir + '.' + str(idx) + ".model"
+            model_name = os.path.join(config.save_model_dir, "best.ckpt")
             torch.save(model.state_dict(), model_name)
             # evaluate test data
-            _ = evaluate(model, test_dataloader, "Test")
         else:
             no_imporv_epoch += 1
             if no_imporv_epoch >= 10:
                 print("early stop")
                 break
+        _ = evaluate(model, test_dataloader, "Test")
 
 
 if __name__ == '__main__':
@@ -247,20 +234,16 @@ if __name__ == '__main__':
     parser.add_argument('--data_path', default="/data/home/ganleilei/law/ContrastiveLJP/")
     parser.add_argument('--status', default="train")
     parser.add_argument('--savemodel', default="/data/home/ganleilei/law/ContrastiveLJP/models/model")
-    parser.add_argument('--savedset', default="/data/home/ganleilei/law/ContrastiveLJP/models/save.dset")
     parser.add_argument('--loadmodel', default="")
 
     parser.add_argument('--embedding_path', default='/data/home/ganleilei/law/ContrastiveLJP/cail_thulac.npy')
     parser.add_argument('--word2id_dict', default='/data/home/ganleilei/law/ContrastiveLJP/w2id_thulac.pkl')
     parser.add_argument('--word_emb_dim', default=200)
     parser.add_argument('--MAX_SENTENCE_LENGTH', default=250)
-    parser.add_argument('--hops', default=3)
-    parser.add_argument('--heads', default=4)
-    parser.add_argument('--max_decoder_step', default=100)
 
-    parser.add_argument('--HP_iteration', default=30)
-    parser.add_argument('--HP_batch_size', default=128)
-    parser.add_argument('--HP_hidden_dim', default=256)
+    parser.add_argument('--HP_iteration', default=30, type=int)
+    parser.add_argument('--HP_batch_size', default=128, type=int)
+    parser.add_argument('--HP_hidden_dim', default=256, type=int)
     parser.add_argument('--HP_dropout', default=0.2)
     parser.add_argument('--HP_lstmdropout', default=0.5)
     parser.add_argument('--HP_lstm_layer', default=1)
@@ -270,54 +253,56 @@ if __name__ == '__main__':
     parser.add_argument('--use_warmup_adam', default='False')
     parser.add_argument('--use_adam', default='True')
     parser.add_argument('--law_relation_threshold', default=0.3)
+    parser.add_argument('--seed', default=2022, type=int)
+    parser.add_argument('--bert_path', type=str)
+    parser.add_argument('--sample_size', default='all', type=str)
 
     args = parser.parse_args()
+    print(args)
+    seed_rand(args.seed)
 
     status = args.status
 
     if status == 'train':
-        if os.path.exists(args.loadmodel) and os.path.exists(args.savedset):
-            print('Load model path:', args.loadmodel)
-            print('Load save dataset:', args.savedset)
-            config: Config = load_data_setting(args.savedset)
-            model = LawModel(config)
-            model.load_state_dict(torch.load(args.loadmodel))
-        else:
-            print('New config....')
-            config = Config()
-            config.HP_iteration = args.HP_iteration
-            config.HP_batch_size = args.HP_batch_size
-            config.HP_hidden_dim = args.HP_hidden_dim
-            config.HP_dropout = args.HP_dropout
-            config.HP_lstm_layer = args.HP_lstm_layer
-            config.HP_lr = args.HP_lr
-            config.MAX_SENTENCE_LENGTH = args.MAX_SENTENCE_LENGTH
-            config.HP_lr_decay = args.HP_lr_decay
-            config.save_model_dir = args.savemodel
-            config.save_dset_dir = args.savedset
-            config.use_warmup_adam = str2bool(args.use_warmup_adam)
-            config.use_adam = str2bool(args.use_adam)
-            with open(args.word2id_dict, 'rb') as f:
-                config.word2id_dict = pickle.load(f) 
-            
-            config.load_word_pretrain_emb(args.embedding_path)
-            config.law_relation_threshold = args.law_relation_threshold
-
-            save_data_setting(config, config.save_dset_dir + '.dset')
-            model = LawModel(config)
-
+        print('New config....')
+        config = Config()
+        config.HP_iteration = args.HP_iteration
+        config.HP_batch_size = args.HP_batch_size
+        config.HP_hidden_dim = args.HP_hidden_dim
+        config.HP_dropout = args.HP_dropout
+        config.HP_lstm_layer = args.HP_lstm_layer
+        config.HP_lr = args.HP_lr
+        config.MAX_SENTENCE_LENGTH = args.MAX_SENTENCE_LENGTH
+        config.HP_lr_decay = args.HP_lr_decay
+        config.save_model_dir = args.savemodel
+        config.use_warmup_adam = str2bool(args.use_warmup_adam)
+        config.use_adam = str2bool(args.use_adam)
+        with open(args.word2id_dict, 'rb') as f:
+            config.word2id_dict = pickle.load(f) 
+        config.id2word_dict = {item[1]: item[0] for item in config.word2id_dict.items()}
+        config.load_word_pretrain_emb(args.embedding_path)
+        config.law_relation_threshold = args.law_relation_threshold
+        if not os.path.exists(config.save_model_dir):
+            os.mkdir(config.save_model_dir)
+        
+        save_data_setting(config, os.path.join(config.save_dset_dir, 'data.dset'))
         config.show_data_summary()
-
-        if config.HP_gpu:
-            model.cuda()
-
+        
         print("\nLoading data...")
-        tokenizer_path = "/data/home/ganleilei/bert/bert-base-chinese/"
-        tokenizer = AutoTokenizer.from_pretrained(tokenizer_path)
+        tokenizer = AutoTokenizer.from_pretrained(args.bert_path)
         train_data, valid_data, test_data = load_dataset(args.data_path)
-        train_dataset = CustomDataset(train_data, tokenizer, 512)
-        valid_dataset = CustomDataset(valid_data, tokenizer, 512)
-        test_dataset = CustomDataset(test_data, tokenizer, 512)
+        if args.sample_size != 'all':
+            print("sample size:", args.sample_size)
+            sample_size = int(args.sample_size)
+            sample_train_data  = {}
+            for key in train_data.keys():
+                sample_train_data[key] = train_data[key][:sample_size]
+        else:
+            sample_train_data = train_data
+        
+        train_dataset = CustomDataset(sample_train_data, tokenizer, config.MAX_SENTENCE_LENGTH, config.id2word_dict)
+        valid_dataset = CustomDataset(valid_data, tokenizer, config.MAX_SENTENCE_LENGTH, config.id2word_dict)
+        test_dataset = CustomDataset(test_data, tokenizer, config.MAX_SENTENCE_LENGTH, config.id2word_dict)
 
         print("train_data %d, valid_data %d, test_data %d." % (
             len(train_dataset), len(valid_dataset), len(test_dataset)))
@@ -326,7 +311,11 @@ if __name__ == '__main__':
             "test_data_set": test_dataset,
             "valid_data_set": valid_dataset
         }
-        
+
+        model = LawModel(config)
+        if config.HP_gpu:
+            model.cuda()
+
         print("\nTraining...")
         train(model, data_dict, config)
 
@@ -336,6 +325,3 @@ if __name__ == '__main__':
             exit(1)
 
         config = load_data_setting(args.savedset)
-        print("\nLoading data...")
-        test_data = load_data(args.test, config)
-        decode_results = load_model_decode(args.loadmodel, config, test_data, 'Test', True)
