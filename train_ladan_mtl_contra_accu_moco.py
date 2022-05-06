@@ -129,9 +129,9 @@ def train(model, dataset, config: Config):
     valid_data_set = dataset["valid_data_set"]
     test_data_set = dataset["test_data_set"]
     print("config batch size:", config.HP_batch_size)
-    train_dataloader = DataLoader(train_data_set, batch_size=config.HP_batch_size, drop_last=True, shuffle=True, collate_fn=collate_qa_fn)
-    valid_dataloader = DataLoader(valid_data_set, batch_size=config.HP_batch_size, drop_last=True, shuffle=False, collate_fn=collate_qa_fn)
-    test_dataloader = DataLoader(test_data_set, batch_size=config.HP_batch_size, drop_last=True, shuffle=False, collate_fn=collate_qa_fn)
+    train_dataloader = DataLoader(train_data_set, batch_size=config.HP_batch_size,shuffle=True, collate_fn=collate_qa_fn)
+    valid_dataloader = DataLoader(valid_data_set, batch_size=config.HP_batch_size, shuffle=False, collate_fn=collate_qa_fn)
+    test_dataloader = DataLoader(test_data_set, batch_size=config.HP_batch_size, huffle=False, collate_fn=collate_qa_fn)
 
     print("Training model...")
     print(model)
