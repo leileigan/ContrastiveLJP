@@ -32,6 +32,22 @@ from tqdm import tqdm
 os.chdir('/data/ganleilei/workspace/ContrastiveLJP')
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+def load_model(model_dir, config, gpu):
+    config.HP_gpu = gpu
+    print("Load Model from file: ", model_dir)
+    model = NeurJudge(config)
+    if config.HP_gpu:
+        model = model.cuda()
+    ## load model need consider if the model trained in GPU and load in CPU, or vice versa
+    # if not gpu:
+    #     model.load_state_dict(torch.load(model_dir), map_location=lambda storage, loc: storage)
+    #     # model = torch.load(model_dir, map_location=lambda storage, loc: storage)
+    # else:
+    model.load_state_dict(torch.load(model_dir))
+    # model = torch.load(model_dir)
+
+    return model
+
 def str2bool(params):
     return True if params.lower() == 'true' else False
 
@@ -59,6 +75,7 @@ def load_data_setting(save_file):
     return data
 
 def get_result(accu_target, accu_preds, law_target, law_preds, term_target, term_preds, mode):
+
     accu_macro_f1 = f1_score(accu_target, accu_preds, average="macro")
     accu_macro_precision = precision_score(accu_target, accu_preds, average="macro")
     accu_macro_recall = recall_score(accu_target, accu_preds, average="macro")
@@ -70,6 +87,10 @@ def get_result(accu_target, accu_preds, law_target, law_preds, term_target, term
     term_macro_f1 = f1_score(term_target, term_preds, average="macro")
     term_macro_precision = precision_score(term_target, term_preds, average="macro")
     term_macro_recall = recall_score(term_target, term_preds, average="macro")
+
+    # print(classification_report(accu_target, accu_preds))
+    # print(classification_report(law_target, law_preds))
+    # print(classification_report(term_target, term_preds))
 
     print("Accu task: macro_f1:%.4f, macro_precision:%.4f, macro_recall:%.4f" % (accu_macro_f1, accu_macro_precision, accu_macro_recall))
     print("Law task: macro_f1:%.4f, macro_precision:%.4f, macro_recall:%.4f" % (law_macro_f1, law_macro_precision, law_macro_recall))
@@ -85,6 +106,7 @@ def evaluate(model, valid_dataloader, process, name, epoch_idx):
     ground_accu_y, ground_law_y, ground_term_y  = [], [], []
     predicts_accu_y, predicts_law_y, predicts_term_y = [], [], []
     
+    process = Data_Process()
     legals,legals_len,arts,arts_sent_lent,charge_tong2id,id2charge_tong,art2id,id2art = process.get_graph()
     legals,legals_len,arts,arts_sent_lent = legals.cuda(),legals_len.cuda(),arts.cuda(),arts_sent_lent.cuda()
     for batch_idx, datapoint in enumerate(valid_dataloader):
@@ -110,8 +132,8 @@ def evaluate(model, valid_dataloader, process, name, epoch_idx):
     # confused_matrix_law = confusion_matrix(ground_law_y, predicts_law_y)
     # confused_matrix_term = confusion_matrix(ground_term_y, predicts_term_y)
     print("Accu task accuracy: %.4f, Law task accuracy: %.4f, Term task accuracy: %.4f" % (accu_accuracy, law_accuracy, term_accuracy)) 
-    print("Confused matrix accu of 寻衅滋事罪:", confused_matrix_accu[1])
-    print("Confused matrix accu of 故意伤害罪:", confused_matrix_accu[111])
+    # print("Confused matrix accu of 寻衅滋事罪:", confused_matrix_accu[1])
+    # print("Confused matrix accu of 故意伤害罪:", confused_matrix_accu[111])
     score = get_result(ground_accu_y, predicts_accu_y, ground_law_y, predicts_law_y, ground_term_y, predicts_term_y, name)
 
     return score
@@ -329,8 +351,22 @@ if __name__ == '__main__':
         train(model, data_dict, config)
 
     elif status == 'test':
-        if os.path.exists(args.loadmodel) is False or os.path.exists(args.savedset) is False:
-            print('File path does not exit: %s and %s' % (args.loadmodel, args.savedset))
+        if os.path.exists(args.loadmodel) is False:
+            print('File path does not exit: %s and %s' % args.loadmodel)
             exit(1)
 
-        config = load_data_setting(args.savedset)
+        print("\nLoading data...")
+        savedset_path = "/data/ganleilei/law/ContrastiveLJP/results/NeurJudge/data.dset"
+        config = load_data_setting(savedset_path)
+        tokenizer = AutoTokenizer.from_pretrained(args.bert_path)
+        train_data, valid_data, test_data = load_dataset(args.data_path)
+        train_dataset = NeurJudgeDataset(train_data, tokenizer, config.MAX_SENTENCE_LENGTH, config.id2word_dict)
+        valid_dataset = NeurJudgeDataset(valid_data, tokenizer, config.MAX_SENTENCE_LENGTH, config.id2word_dict)
+        test_dataset = NeurJudgeDataset(test_data, tokenizer, config.MAX_SENTENCE_LENGTH, config.id2word_dict)
+
+        train_dataloader = DataLoader(train_dataset, batch_size=config.HP_batch_size, shuffle=False, collate_fn=collate_neur_judge_fn)
+        valid_dataloader = DataLoader(valid_dataset, batch_size=config.HP_batch_size, shuffle=False, collate_fn=collate_neur_judge_fn)
+        test_dataloader = DataLoader(test_dataset, batch_size=config.HP_batch_size, shuffle=False, collate_fn=collate_neur_judge_fn)
+
+        model = load_model(args.loadmodel, config, True)
+        score = evaluate(model, test_dataloader, "Test", config, 0)
