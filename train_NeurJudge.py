@@ -25,6 +25,7 @@ from utils.utils import Data_Process
 
 import torch.optim as optim
 from tqdm import tqdm
+import numpy as np
 
 os.chdir('/data/ganleilei/workspace/ContrastiveLJP')
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
