@@ -16,13 +16,10 @@ from sklearn.metrics import (accuracy_score, classification_report, f1_score,
                              precision_score, recall_score, confusion_matrix)
 from torch import optim
 from torch.utils.data.dataloader import DataLoader
-
+from torch.utils.data.dataset import Dataset
 from models.model_NeurJudge import NeurJudge
-from utils.config import Config
 from utils.optim import ScheduledOptim
-from data.dataset import load_dataset, NeurJudgeDataset, collate_neur_judge_fn 
 from transformers import AutoTokenizer
-from law_processed.law_processed import get_law_graph
 from utils.config import seed_rand
 from utils.utils import Data_Process
 
@@ -30,7 +27,176 @@ import torch.optim as optim
 from tqdm import tqdm
 
 os.chdir('/data/ganleilei/workspace/ContrastiveLJP')
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+class Config:
+    def __init__(self):
+        self.MAX_SENTENCE_LENGTH = 250
+        self.word_emb_dim = 200
+        self.pretrain_word_embedding = None
+        self.word2id_dict = None
+        self.id2word_dict = None
+        self.bert_path = None
+
+        self.accu_label_size = 119
+        self.law_label_size = 103
+        self.term_label_size = 12
+        self.law_relation_threshold = 0.3
+
+        self.sent_len = 100
+        self.doc_len = 15
+        #  hyperparameters
+        self.HP_iteration = 100
+        self.HP_batch_size = 128
+        self.HP_hidden_dim = 200
+        self.HP_dropout = 0.2
+        self.HP_lstmdropout = 0.5
+        self.HP_lstm_layer = 1
+        self.HP_bilstm = True
+        self.HP_gpu = True
+        self.HP_lr = 0.015
+        self.HP_lr_decay = 0.05
+        self.HP_clip = 5.0
+        self.HP_momentum = 0
+        self.bert_hidden_size = 768
+        self.HP_freeze_word_emb = True
+
+        # optimizer
+        self.use_adam = True
+        self.use_bert = False
+        self.use_sgd = False
+        self.use_adadelta = False
+        self.use_warmup_adam = False
+        self.mode = 'train'
+
+        self.save_model_dir = ""
+        self.save_dset_dir = ""
+
+        self.filters_size = [1, 3, 4, 5]
+        self.num_filters = [50, 50, 50, 50]
+
+        #contrastive learning
+        self.moco_temperature = 0.07
+        self.moco_queue_size = 65536
+        self.moco_momentum = 0.999
+        self.alpha = 0.1
+        self.warm_epoch = 0
+        self.confused_matrix = None
+        self.moco_hard_queue_size = 3000
+
+
+    def show_data_summary(self):
+        print("DATA SUMMARY START:")
+        print("     MAX SENTENCE LENGTH: %s" % (self.MAX_SENTENCE_LENGTH))
+        print("     Word embedding size: %s" % (self.word_emb_dim))
+        print("     Bert Path:           %s" % (self.bert_path))
+        print("     Accu label     size: %s" % (self.accu_label_size))
+        print("     Law label     size:  %s" % (self.law_label_size))
+        print("     Term label     size: %s" % (self.term_label_size))
+
+        print("     Hyperpara  iteration: %s" % (self.HP_iteration))
+        print("     Hyperpara  batch size: %s" % (self.HP_batch_size))
+        print("     Hyperpara          lr: %s" % (self.HP_lr))
+        print("     Hyperpara    lr_decay: %s" % (self.HP_lr_decay))
+        print("     Hyperpara     HP_clip: %s" % (self.HP_clip))
+        print("     Hyperpara    momentum: %s" % (self.HP_momentum))
+        print("     Hyperpara  hidden_dim: %s" % (self.HP_hidden_dim))
+        print("     Hyperpara     dropout: %s" % (self.HP_dropout))
+        print("     Hyperpara  lstm_layer: %s" % (self.HP_lstm_layer))
+        print("     Hyperpara      bilstm: %s" % (self.HP_bilstm))
+        print("     Hyperpara         GPU: %s" % (self.HP_gpu))
+        print("     Filter size:        :  %s" % (self.filters_size))
+        print("     Number filters      :  %s" % (self.num_filters))
+
+        print("     Temperature         :  %s" % (self.moco_temperature))
+        print("     Momentum            :  %s" % (self.moco_momentum))
+        print("     Queue size          :  %s" % (self.moco_queue_size))
+        print("     Alpha               :  %s" % (self.alpha))
+        print("     Hard queue size     :  %s" % (self.moco_hard_queue_size))
+
+        print("DATA SUMMARY END.")
+        sys.stdout.flush()
+
+
+    def load_word_pretrain_emb(self, emb_path):
+        self.pretrain_word_embedding = np.cast[np.float32](np.load(emb_path))
+        self.word_emb_dim = self.pretrain_word_embedding.shape[1]
+        print("word embedding size:", self.pretrain_word_embedding.shape)
+
+class NeurJudgeDataset(Dataset):
+
+    def __init__(self, data, tokenizer, max_len, id2word_dict):
+        self.tokenizer = tokenizer
+        self.max_len = max_len
+        filtered_data = {'fact_list':[], 'accu_label_lists':[], 'law_label_lists':[], 'term_lists': [], 'raw_fact_lists': []}
+        self.number_intensive_classes = list(range(120))
+        # self.number_intensive_classes = [42]
+        for index in range(len(data['fact_list'])):
+            if data['accu_label_lists'][index] not in self.number_intensive_classes: continue
+            filtered_data['fact_list'].append(data['fact_list'][index])
+            filtered_data['accu_label_lists'].append(data['accu_label_lists'][index])
+            filtered_data['law_label_lists'].append(data['law_label_lists'][index])
+            filtered_data['term_lists'].append(data['term_lists'][index])
+            filtered_data['raw_fact_lists'].append(data['raw_facts_list'][index])
+            
+        self.data = filtered_data
+        self.id2word_dict = id2word_dict
+
+    def __len__(self):
+        return len(self.data['fact_list'])
+
+    def _convert_ids_to_sent(self, fact):
+        #fact: [max_sent_len, ]
+        mask = np.array(fact) == 164672
+        mask = ~mask
+        seq_len = mask.sum(0)
+        return [self.id2word_dict[id] for id in fact[:seq_len]]
+    
+
+    def __getitem__(self, index):
+        fact_list = self.data['fact_list'][index]
+        raw_fact_list = self._convert_ids_to_sent(fact_list) 
+        accu_label_lists = self.data['accu_label_lists'][index]
+        law_label_lists = self.data['law_label_lists'][index]
+        term_lists = self.data['term_lists'][index]
+        # if accu_label_lists in self.number_intensive_classes:
+        #     print(raw_fact_list)
+        #     print(law_label_lists)
+        #     print(term_lists)
+        #     print(self.data['raw_fact_lists'][index])
+        return fact_list, raw_fact_list, accu_label_lists, law_label_lists, term_lists 
+
+
+def collate_neur_judge_fn(batch):
+    
+    batch_fact_list, batch_raw_fact_list, batch_law_label_lists, batch_accu_label_lists, batch_term_lists = [], [], [], [], []
+    for item in batch:
+        batch_fact_list.append(item[0])
+        batch_raw_fact_list.append(item[1])
+        batch_accu_label_lists.append(item[2])
+        batch_law_label_lists.append(item[3])
+        batch_term_lists.append(item[4])
+
+    padded_fact_list = torch.LongTensor(batch_fact_list).to(DEVICE)
+    padded_accu_label_lists = torch.LongTensor(batch_accu_label_lists).to(DEVICE)
+    padded_law_label_lists = torch.LongTensor(batch_law_label_lists).to(DEVICE)
+    padded_term_lists = torch.LongTensor(batch_term_lists).to(DEVICE)
+
+    return padded_fact_list, batch_raw_fact_list, padded_accu_label_lists, padded_law_label_lists, padded_term_lists
+
+
+def load_dataset(path):
+    train_path = os.path.join(path, "train_processed_thulac_Legal_basis_with_digit_number.pkl")
+    valid_path = os.path.join(path, "valid_processed_thulac_Legal_basis_with_digit_number.pkl")
+    test_path = os.path.join(path, "test_processed_thulac_Legal_basis_with_digit_number.pkl")
+    
+    train_dataset = pickle.load(open(train_path, mode='rb'))
+    valid_dataset = pickle.load(open(valid_path, mode='rb'))
+    test_dataset = pickle.load(open(test_path, mode='rb'))
+
+    print("train dataset sample len:", len(train_dataset['law_label_lists']))
+    return train_dataset, valid_dataset, test_dataset
+
 
 def load_model(model_dir, config, gpu):
     config.HP_gpu = gpu
