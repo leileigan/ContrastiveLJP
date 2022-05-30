@@ -17,7 +17,7 @@ from sklearn.metrics import (accuracy_score, classification_report, f1_score,
 from torch import optim
 from torch.utils.data.dataloader import DataLoader
 
-from models.model_NeurJudge import NeurJudge
+from models.model_NeurJudge_num import NeurJudge
 from utils.optim import ScheduledOptim
 from torch.utils.data import Dataset
 from transformers import AutoTokenizer
