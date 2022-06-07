@@ -253,16 +253,16 @@ class NeurJudge(nn.Module):
         self.code_wise = Code_Wise_Attention()
         self.mask_attention = Mask_Attention()
         
-        self.encoder_term = nn.GRU(self.hidden_dim * 4, self.hidden_dim*2, batch_first=True, bidirectional=True)
-        self.encoder_article = nn.GRU(self.hidden_dim * 2, self.hidden_dim*1, batch_first=True, bidirectional=True)
+        self.encoder_term = nn.GRU(self.hidden_dim * 6, self.hidden_dim*3, batch_first=True, bidirectional=True)
+        self.encoder_article = nn.GRU(self.hidden_dim * 4, self.hidden_dim*2, batch_first=True, bidirectional=True)
 
         self.id2article = json.load(open(BASE+'/NeurJudge_config_data/id2article.json'))
         self.mask_attention_article = Mask_Attention()
 
         self.encoder_charge = nn.GRU(self.data_size,self.hidden_dim, batch_first=True, bidirectional=True)
         self.charge_pred = nn.Linear(self.hidden_dim*2,119)
-        self.article_pred = nn.Linear(self.hidden_dim*2,103)
-        self.time_pred = nn.Linear(self.hidden_dim*4,11)
+        self.article_pred = nn.Linear(self.hidden_dim*4,103)
+        self.time_pred = nn.Linear(self.hidden_dim*6,11)
 
         self.accu_loss = torch.nn.NLLLoss()
         self.law_loss = torch.nn.NLLLoss()
