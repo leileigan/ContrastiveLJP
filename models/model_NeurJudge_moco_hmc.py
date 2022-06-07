@@ -336,7 +336,7 @@ class NeurJudge(nn.Module):
 
 
         # the article prediction
-        fact_article = torch.cat([adc_vector],-1)
+        fact_article = torch.cat([d_hidden, adc_vector],-1)
         fact_legal_article_hidden,_ = self.encoder_article(fact_article)
 
         fact_article_hidden = fact_legal_article_hidden.mean(1)
@@ -352,7 +352,7 @@ class NeurJudge(nn.Module):
 
         # the term of penalty prediction change here
         # term_message = torch.cat([ssc_vector,dsc_vector],-1)
-        term_message = torch.cat([ssc_vector,dsc_vector],-1)
+        term_message = torch.cat([d_hidden, ssc_vector,dsc_vector],-1)
         term_message,_ = self.encoder_term(term_message)
 
         fact_legal_time_hidden = term_message.mean(1)
