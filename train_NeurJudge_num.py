@@ -169,17 +169,13 @@ class NeurJudgeDataset(Dataset):
         term_lists = self.data['term_lists'][index]
         money_amount = [self.word2id_dict[w] for w in list(str(self.data['money_amount_lists'][index]))]
         drug_weight = [self.word2id_dict[w] for w in list(str(self.data['drug_weight_lists'][index]))]
-        num1 = np.random.randint(0, 10000) * 1000
-        num2 = np.random.randint(0, 10000) * 1000
-        num_label_lists = 2*np.abs(num1 - num2) / (num1+num2)
-        num1 = [self.word2id_dict[w] for w in list(str(num1))]
-        num2 = [self.word2id_dict[w] for w in list(str(num2))]
+        
         # if accu_label_lists in self.number_intensive_classes:
         #     print(raw_fact_list)
         #     print(law_label_lists)
         #     print(term_lists)
         #     print(self.data['raw_fact_lists'][index])
-        return fact_list, raw_fact_list, accu_label_lists, law_label_lists, term_lists, money_amount, drug_weight, num1, num2, num_label_lists
+        return fact_list, raw_fact_list, accu_label_lists, law_label_lists, term_lists, money_amount, drug_weight
 
 
 word2id_dict = pickle.load(open("/data/ganleilei/law/ContrastiveLJP/w2id_thulac.pkl", 'rb'))
@@ -187,7 +183,6 @@ id2word_dict = {item[1]: item[0] for item in word2id_dict.items()}
 
 def collate_neur_judge_fn(batch):
     batch_fact_list, batch_raw_fact_list, batch_law_label_lists, batch_accu_label_lists, batch_term_lists, batch_money_amount, batch_drug_weight = [], [], [], [], [], [], []
-    batch_num1, batch_num2, batch_num_label_lists = [], [], []
     for item in batch:
         batch_fact_list.append(item[0])
         batch_raw_fact_list.append(item[1])
@@ -196,9 +191,6 @@ def collate_neur_judge_fn(batch):
         batch_term_lists.append(item[4])
         batch_money_amount.append(item[5])
         batch_drug_weight.append(item[6])
-        batch_num1.append(item[7]) #[bsz, num_seq_len]
-        batch_num2.append(item[8]) #[bsz, num_seq_len]
-        batch_num_label_lists.append(item[9])
 
     max_money_amount_len = max([len(item) for item in batch_money_amount])
     padded_money_amount_lists = []
@@ -210,27 +202,14 @@ def collate_neur_judge_fn(batch):
     for item in batch_drug_weight:
         padded_drug_weight_lists.append([word2id_dict['0']] *(max_drug_weight_len-len(item)) + item)
 
-    max_num1_len = max([len(item) for item in batch_num1])
-    padded_num1_lists = []
-    for item in batch_num1:
-        padded_num1_lists.append([word2id_dict['0']] *(max_num1_len-len(item)) + item)
-
-    max_num2_len = max([len(item) for item in batch_num2])
-    padded_num2_lists = []
-    for item in batch_num1:
-        padded_num2_lists.append([word2id_dict['0']] *(max_num2_len-len(item)) + item)
-
     padded_fact_list = torch.LongTensor(batch_fact_list).to(DEVICE)
     padded_accu_label_lists = torch.LongTensor(batch_accu_label_lists).to(DEVICE)
     padded_law_label_lists = torch.LongTensor(batch_law_label_lists).to(DEVICE)
     padded_term_lists = torch.LongTensor(batch_term_lists).to(DEVICE)
     padded_money_amount_lists = torch.LongTensor(padded_money_amount_lists).to(DEVICE)
     padded_drug_weight_lists = torch.LongTensor(padded_drug_weight_lists).to(DEVICE)
-    padded_num1_lists = torch.LongTensor(padded_num1_lists).to(DEVICE)
-    padded_num2_lists = torch.LongTensor(padded_num2_lists).to(DEVICE)
-    batch_num_label_lists = torch.FloatTensor(batch_num_label_lists).to(DEVICE)
 
-    return padded_fact_list, batch_raw_fact_list, padded_accu_label_lists, padded_law_label_lists, padded_term_lists, padded_money_amount_lists, padded_drug_weight_lists, padded_num1_lists, padded_num2_lists, batch_num_label_lists
+    return padded_fact_list, batch_raw_fact_list, padded_accu_label_lists, padded_law_label_lists, padded_term_lists, padded_money_amount_lists, padded_drug_weight_lists
 
 
 def load_dataset(path):
@@ -327,13 +306,13 @@ def evaluate(model, valid_dataloader, process, name, epoch_idx):
     legals,legals_len,arts,arts_sent_lent = legals.cuda(),legals_len.cuda(),arts.cuda(),arts_sent_lent.cuda()
 
     for batch_idx, datapoint in enumerate(valid_dataloader):
-        documents, _, accu_label_lists, law_label_lists, term_lists, money_amount_lists, drug_weight_lists, num1_lists, num2_lists, num_label_lists = datapoint
+        documents, _, accu_label_lists, law_label_lists, term_lists, money_amount_lists, drug_weight_lists  = datapoint
         sent_lent = ""
-        accu_preds, law_preds, term_preds, accu_loss, law_loss, term_loss, _, _, _, dice_loss = model(
+        accu_preds, law_preds, term_preds, accu_loss, law_loss, term_loss, _, _, _  = model(
             legals,legals_len,arts,arts_sent_lent, \
             charge_tong2id,id2charge_tong,art2id,id2art,documents, \
             sent_lent,process,accu_label_lists, law_label_lists, term_lists, \
-            money_amount_lists, drug_weight_lists, num1_lists, num2_lists, num_label_lists)
+            money_amount_lists, drug_weight_lists)
 
         ground_accu_y.extend(accu_label_lists.tolist())
         ground_law_y.extend(law_label_lists.tolist())
@@ -426,13 +405,13 @@ def train(model, dataset, config: Config):
         ground_term_y, predicts_term_y = [], []
 
         for batch_idx, datapoint in enumerate(tqdm(train_dataloader)):
-            fact_lists, _, accu_label_lists, law_label_lists, term_lists, money_amount_lists, drug_weight_lists, num1_lists, num2_lists, num_labels_lists = datapoint
-            accu_preds, law_preds, term_preds, accu_loss, law_loss, term_loss, _, _, _, dice_loss = model.forward( \
+            fact_lists, _, accu_label_lists, law_label_lists, term_lists, money_amount_lists, drug_weight_lists  = datapoint
+            accu_preds, law_preds, term_preds, accu_loss, law_loss, term_loss, _, _, _ = model.forward( \
                 legals, legals_len, arts, arts_sent_lent, charge_tong2id, id2charge_tong, art2id, id2art, fact_lists, \
                 config.MAX_SENTENCE_LENGTH, process, accu_label_lists, law_label_lists, term_lists, money_amount_lists,\
-                drug_weight_lists, num1_lists, num2_lists, num_labels_lists)
+                drug_weight_lists)
 
-            loss = (accu_loss + term_loss + law_loss) / batch_size + dice_loss
+            loss = (accu_loss + term_loss + law_loss) / batch_size
             sample_loss += loss.data
             sample_accu_loss += accu_loss.data
             sample_law_loss += law_loss.data
