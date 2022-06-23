@@ -433,8 +433,8 @@ def train(model, dataset, config: Config):
                 temp_time = time.time()
                 temp_cost = temp_time - temp_start
                 temp_start = temp_time
-                print("Instance: %s; Time: %.2fs; loss: %.2f; accu loss %.2f; law loss %.2f; term loss %.2f; dice loss %.2f; accu acc %.4f; law acc %.4f; term acc %.4f" % 
-                ((batch_idx + 1), temp_cost, sample_loss, sample_accu_loss, sample_law_loss, sample_term_loss, dice_loss, cur_accu_accuracy, cur_law_accuracy, cur_term_accuracy))
+                print("Instance: %s; Time: %.2fs; loss: %.2f; accu loss %.2f; law loss %.2f; term loss %.2f; accu acc %.4f; law acc %.4f; term acc %.4f" % 
+                ((batch_idx + 1), temp_cost, sample_loss, sample_accu_loss, sample_law_loss, sample_term_loss, cur_accu_accuracy, cur_law_accuracy, cur_term_accuracy))
                 sys.stdout.flush()
                 sample_loss = 0
                 sample_accu_loss = 0
