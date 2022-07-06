@@ -17,7 +17,7 @@ from sklearn.metrics import (accuracy_score, classification_report, f1_score,
 from torch import optim
 from torch.utils.data.dataloader import DataLoader
 
-from models.model_NeurJudge_num import NeurJudge
+from models.model_NeurJudge_num_dice import NeurJudge
 from utils.optim import ScheduledOptim
 from torch.utils.data import Dataset
 from transformers import AutoTokenizer
@@ -169,8 +169,8 @@ class NeurJudgeDataset(Dataset):
         term_lists = self.data['term_lists'][index]
         money_amount = [self.word2id_dict[w] for w in list(str(self.data['money_amount_lists'][index]))]
         drug_weight = [self.word2id_dict[w] for w in list(str(self.data['drug_weight_lists'][index]))]
-        num1 = np.random.randint(0, 10000) * 1000
-        num2 = np.random.randint(0, 10000) * 1000
+        num1 = np.random.randint(0, 2000) 
+        num2 = np.random.randint(0, 2000)
         num_label_lists = 2*np.abs(num1 - num2) / (num1+num2)
         num1 = [self.word2id_dict[w] for w in list(str(num1))]
         num2 = [self.word2id_dict[w] for w in list(str(num2))]
