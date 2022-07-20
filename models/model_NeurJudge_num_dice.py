@@ -13,6 +13,8 @@ from typing import List
 import math
 import json
 from torch.autograd import Variable
+import pickle as pk
+from .model_DICE import DICE
 
 DEVICE = (torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu'))
 
@@ -90,12 +92,19 @@ class NeurJudge(nn.Module):
 
         self.charge_pred = nn.Linear(self.hidden_dim*2,119)
         self.article_pred = nn.Linear(self.hidden_dim*4,103)
-        self.time_pred = nn.Linear(self.hidden_dim*10,11)
+
+        #数字相关编码
+        self.dice_config = pk.load(open(config.dice_config_path, "rb"))
+        self.dice_model = DICE(self.dice_config)
+        self.dice_model.load_state_dict(torch.load(config.dice_model_path))
+        for p in self.dice_model.parameters():
+            p.requires_grad = config.is_frazeDice
+
+        self.time_pred = nn.Linear(self.hidden_dim*6 + self.dice_config.hidden_dim*2,11)
 
         self.accu_loss = torch.nn.NLLLoss()
         self.law_loss = torch.nn.NLLLoss()
         self.term_loss = torch.nn.NLLLoss()
-        self.dice_loss = torch.nn.MSELoss(reduction='mean')
 
     def fact_separation(self,process,verdict_names,embs,encoder,circumstance,mask_attention,types):
         verdict, verdict_len = process.process_law(verdict_names,types)
@@ -117,10 +126,10 @@ class NeurJudge(nn.Module):
         # dissimilar vectors
         dissimilar = circumstance - similar
         return similar,dissimilar
-    
+
     def forward(self, charge, charge_sent_len, article,
                 article_sent_len, charge_tong2id, id2charge_tong, art2id, id2art,
-                documents, sent_lent, process, accu_labels, law_labels, term_labels, money_amount_lists, drug_weight_lists, num1_lists, num2_lists, num_label_lists):
+                documents, sent_lent, process, accu_labels, law_labels, term_labels, money_amount_lists, drug_weight_lists):
         # deal the semantics of labels (i.e., charges and articles) 
         charge = self.embs(charge)
         article = self.embs(article)
@@ -128,23 +137,7 @@ class NeurJudge(nn.Module):
         article,_ = self.encoder_charge(article)
 
         # encoder num
-        money_amount = self.embs(money_amount_lists)
-        drug_weight = self.embs(drug_weight_lists)
-        money_amount_hidden, _ = self.encoder_num(money_amount) #[bsz, seq_len, hiden_dim]
-        drug_weight_hidden, _ = self.encoder_num(drug_weight) #[bsz, seq_len, hidden_dim]
-        money_amount_hidden = money_amount_hidden[:,-1,:]
-        drug_weight_hidden = drug_weight_hidden[:,-1,:]
-
-        num1_emb = self.embs(num1_lists)
-        num2_emb = self.embs(num2_lists)
-        num1_hidden, _ = self.encoder_num(num1_emb)
-        num2_hidden, _ = self.encoder_num(num2_emb)
-        num1_hidden = num1_hidden[:,-1,:] #[bsz, hidden_dim]
-        num2_hidden = num2_hidden[:,-1,:] #[bsz, hidde_dim]
-        dot_product = torch.einsum('nk,nk->n', [num1_hidden, num2_hidden])
-        norm = torch.norm(num1_hidden, p=2, dim=-1) * torch.norm(num2_hidden, p=2, dim=-1)
-        dis = 1 - dot_product/norm
-        dice_loss = self.dice_loss(dis, num_label_lists)
+        money_amount_hidden, drug_weight_hidden = self.dice_model.encode_num(money_amount_lists, drug_weight_lists) 
 
         # deal the case fact
         doc = self.embs(documents)
@@ -189,15 +182,29 @@ class NeurJudge(nn.Module):
         term_message,_ = self.encoder_term(term_message)
 
         fact_legal_time_hidden = term_message.mean(1)
-        fact_legal_time_hidden = torch.cat((fact_legal_time_hidden, money_amount_hidden, drug_weight_hidden), dim=-1)
+        fact_legal_time_hidden = torch.cat((fact_legal_time_hidden, money_amount_hidden), dim=-1)
         time_out = self.time_pred(fact_legal_time_hidden)
         
         term_log_softmax = F.log_softmax(time_out, dim=-1)
         term_loss = self.term_loss(term_log_softmax, term_labels)
         _, term_predicts = torch.max(term_log_softmax, dim=1) # [batch_size * max_claims_num]
 
-        return accu_predicts, law_predicts, term_predicts, accu_loss, law_loss, term_loss, df, fact_article_hidden, fact_legal_time_hidden, dice_loss
- 
+        return accu_predicts, law_predicts, term_predicts, accu_loss, law_loss, term_loss, df, fact_article_hidden, fact_legal_time_hidden
+
+    def num_eval(self, num1, num2):
+        num1_emb = self.embs(num1)
+        num2_emb = self.embs(num2)
+        num1_hidden, _ = self.encoder_num(num1_emb)
+        num2_hidden, _ = self.encoder_num(num2_emb)
+        num1_hidden = num1_hidden[:,-1,:] #[bsz, hidden_dim]
+        num2_hidden = num2_hidden[:,-1,:] #[bsz, hidde_dim]
+        dot_product = torch.einsum('nk,nk->n', [num1_hidden, num2_hidden])
+        norm = torch.norm(num1_hidden, p=2, dim=-1) * torch.norm(num2_hidden, p=2, dim=-1)
+        print(f"dot_product: {dot_product}, norm: {norm}, cos sim: {dot_product/norm}")
+        dis = 1 - dot_product/norm
+        return dis
+
+
 class NeurJudge_plus(nn.Module):
     def __init__(self,embedding):
         super(NeurJudge_plus, self).__init__()
