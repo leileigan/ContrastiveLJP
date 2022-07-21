@@ -298,7 +298,7 @@ def get_result(accu_target, accu_preds, law_target, law_preds, term_target, term
     print("Law task: macro_f1:%.4f, macro_precision:%.4f, macro_recall:%.4f" % (law_macro_f1, law_macro_precision, law_macro_recall))
     print("Term task: macro_f1:%.4f, macro_precision:%.4f, macro_recall:%.4f" % (term_macro_f1, term_macro_precision, term_macro_recall))
 
-    return (accu_macro_f1 + law_macro_f1 + term_macro_f1) / 3
+    return (accu_macro_f1 + law_macro_f1 + term_macro_f1)
     # return accu_macro_f1
 
 
@@ -363,7 +363,7 @@ def evaluate(model, valid_dataloader, process, name, epoch_idx):
 
     print(f"term macro f1: {term_macro_f1}, term_macro_precision: {term_macro_precision}, term_macro_recall: {term_macro_recall}, abs error: {abs_error}")
 
-    return score
+    return (score - abs_error) / 4 
 
 
 def train(model, dataset, config: Config):
@@ -462,7 +462,7 @@ def train(model, dataset, config: Config):
         sys.stdout.flush()
 
         # evaluate dev data
-        current_score = evaluate(model, valid_dataloader, process,  "Dev", idx)
+        current_score = evaluate(model, valid_dataloader, process,  "Dev", -1)
 
         if current_score > best_dev:
             print("Exceed previous best acc score:", best_dev)
@@ -478,7 +478,7 @@ def train(model, dataset, config: Config):
                 print("early stop")
                 break
        
-        _ = evaluate(model, test_dataloader, process, "Test", idx)
+        _ = evaluate(model, test_dataloader, process, "Test", -1)
 
 
 if __name__ == '__main__':
@@ -486,7 +486,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Contrastive Legal Judgement Prediction')
     parser.add_argument('--data_path', default="/data/ganleilei/law/ContrastiveLJP/NeurJudge/")
     parser.add_argument('--status', default="train")
-    parser.add_argument('--savemodel', default="/data/ganleilei/law/ContrastiveLJP/results/NeurJudge/")
+    parser.add_argument('--savemodel', default="/data/ganleilei/law/ContrastiveLJP/results/NeurJudgeAAELoss/")
     parser.add_argument('--loadmodel', default="")
 
     parser.add_argument('--embedding_path', default='/data/ganleilei/law/ContrastiveLJP/cail_thulac.npy')
