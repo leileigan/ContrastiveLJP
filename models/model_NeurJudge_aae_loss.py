@@ -175,7 +175,7 @@ class NeurJudge(nn.Module):
         time_out = self.time_pred(fact_legal_time_hidden)
         term_log_softmax = F.log_softmax(time_out, dim=-1)
         #class aware
-        if epoch_idx >= 100:
+        if epoch_idx >= 5:
             beta = 10
             term_softmax = torch.softmax(time_out * beta, dim=-1) #[bsz, 11]
             term_class = torch.FloatTensor(list(range(11))).expand(bsz, -1).to(DEVICE)
@@ -187,7 +187,7 @@ class NeurJudge(nn.Module):
             # print("term cross loss:", term_cross_loss)
             term_aae_loss = torch.mean(term_loss_weight * term_cross_loss) 
             term_cross_loss = torch.mean(term_cross_loss)
-            term_loss = 0.6*term_cross_loss + 0.4*term_aae_loss
+            term_loss = 1*term_cross_loss + 1*term_aae_loss
             print(f"term aae loss: {term_aae_loss.item()}, term cross loss: {term_cross_loss.item()}")
         else:
             term_loss = torch.mean(self.term_loss(term_log_softmax, term_labels)) 

@@ -495,7 +495,7 @@ if __name__ == '__main__':
     parser.add_argument('--word_emb_dim', default=200)
     parser.add_argument('--MAX_SENTENCE_LENGTH', default=510)
 
-    parser.add_argument('--HP_iteration', default=50, type=int)
+    parser.add_argument('--HP_iteration', default=16, type=int)
     parser.add_argument('--HP_batch_size', default=128, type=int)
     parser.add_argument('--HP_hidden_dim', default=256, type=int)
     parser.add_argument('--HP_dropout', default=0.2, type=float)
