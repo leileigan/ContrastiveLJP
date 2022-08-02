@@ -35,6 +35,7 @@ def seed_rand(SEED_NUM):
     torch.manual_seed(SEED_NUM)
     random.seed(SEED_NUM)
     np.random.seed(SEED_NUM)
+    torch.cuda.manual_seed(SEED_NUM)
     torch.cuda.manual_seed_all(SEED_NUM)
     torch.backends.cudnn.deterministic=True
     torch.backends.cudnn.benchmark = False
@@ -101,6 +102,7 @@ class Config:
         self.dice_config_path = "" 
         self.is_frazeDice = True 
 
+        self.seed = 10
 
     def show_data_summary(self):
         print("DATA SUMMARY START:")
@@ -377,15 +379,11 @@ def evaluate(model, valid_dataloader, process, name, epoch_idx):
 
 
 def train(model, dataset, config: Config):
-    train_data_set = dataset["train_data_set"]
+    train_dataloader = dataset["train_data_set"]
     # train_data_set = dataset["valid_data_set"]
-    valid_data_set = dataset["valid_data_set"]
-    test_data_set = dataset["test_data_set"]
+    valid_dataloader = dataset["valid_data_set"]
+    test_dataloader = dataset["test_data_set"]
     print("config batch size:", config.HP_batch_size)
-    train_dataloader = DataLoader(train_data_set, batch_size=config.HP_batch_size, shuffle=True, collate_fn=collate_neur_judge_fn)
-    valid_dataloader = DataLoader(valid_data_set, batch_size=config.HP_batch_size, shuffle=False, collate_fn=collate_neur_judge_fn)
-    test_dataloader = DataLoader(test_data_set, batch_size=config.HP_batch_size, shuffle=False, collate_fn=collate_neur_judge_fn)
-
     print("Training model...")
     print(model)
     parameters = filter(lambda p: p.requires_grad, model.parameters())
@@ -462,6 +460,7 @@ def train(model, dataset, config: Config):
                 sample_accu_loss = 0
                 sample_law_loss = 0
                 sample_term_loss = 0
+            
             # if batch_idx == 10: break
             loss.backward()
             # optimizer.step_and_update_lr()
@@ -591,10 +590,14 @@ if __name__ == '__main__':
         print("train_data %d, valid_data %d, test_data %d." % (
             len(train_dataset), len(valid_dataset), len(test_dataset)))
 
+        train_dataloader = DataLoader(train_dataset, batch_size=config.HP_batch_size, shuffle=True, collate_fn=collate_neur_judge_fn)
+        valid_dataloader = DataLoader(valid_dataset, batch_size=config.HP_batch_size, shuffle=False, collate_fn=collate_neur_judge_fn)
+        test_dataloader = DataLoader(test_dataset, batch_size=config.HP_batch_size, shuffle=False, collate_fn=collate_neur_judge_fn)
+
         data_dict = {
-            "train_data_set": train_dataset,
-            "test_data_set": test_dataset,
-            "valid_data_set": valid_dataset
+            "train_data_set": train_dataloader,
+            "test_data_set": test_dataloader,
+            "valid_data_set": valid_dataloader
         }
 
         model = NeurJudge(config)
