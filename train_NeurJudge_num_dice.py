@@ -357,13 +357,19 @@ def evaluate(model, valid_dataloader, process, name, epoch_idx):
     abs_score_lists, accu_s_lists = [], []
     # for i in range(119):
     target_classes = list(range(120))
-    # target_classes = [83, 11, 55, 16, 37, 102, 52, 107, 61, 12, 58, 75, 78, 38, 69, 60, 54, 94, 110, 88, 19, 30, 59, 26, 51, 118, 86, 49, 7] # number sensitive classes
+    # num_target_classes = [83, 11, 55, 16, 37, 102, 52, 107, 61, 12, 58, 75, 78, 38, 69, 60, 54, 94, 110, 88, 19, 30, 59, 26, 51, 118, 86, 49, 7] # number sensitive classes
+    num_target_classes = [54, 86]
     g_t_lists, p_t_lists = [], []
+    num_g_t_lists, num_p_t_lists = [], []
     for g_y, p_y, g_t, p_t in zip(ground_accu_y, predicts_accu_y, ground_term_y, predicts_term_y):
         if g_y in target_classes:
             g_t_lists.append(g_t)
             p_t_lists.append(p_t)
-    
+        
+        if g_y in num_target_classes:
+            num_g_t_lists.append(g_t)
+            num_p_t_lists.append(p_t)
+
     # print(list(zip(g_t_lists, p_t_lists)))
     term_macro_f1 = f1_score(g_t_lists, p_t_lists, average="macro")
     term_macro_precision = precision_score(g_t_lists, p_t_lists, average="macro")
@@ -374,6 +380,17 @@ def evaluate(model, valid_dataloader, process, name, epoch_idx):
     abs_error = sum(abs(g_t_lists - p_t_lists)) / len(g_t_lists)
 
     print(f"term macro f1: {term_macro_f1}, term_macro_precision: {term_macro_precision}, term_macro_recall: {term_macro_recall}, abs error: {abs_error}")
+    
+    # evaluate on number sensitive classes
+    term_macro_f1 = f1_score(num_g_t_lists, num_p_t_lists, average="macro")
+    term_macro_precision = precision_score(num_g_t_lists, num_p_t_lists, average="macro")
+    term_macro_recall = recall_score(num_g_t_lists, num_p_t_lists, average="macro")
+
+    num_g_t_lists = np.array(num_g_t_lists)
+    num_p_t_lists = np.array(num_p_t_lists)
+    abs_error = sum(abs(num_g_t_lists - num_p_t_lists)) / len(num_g_t_lists)
+
+    print(f"number sensitive class term macro f1: {term_macro_f1}, term_macro_precision: {term_macro_precision}, term_macro_recall: {term_macro_recall}, abs error: {abs_error}")
 
     return (score - abs_error) / 4
 
@@ -387,7 +404,7 @@ def train(model, dataset, config: Config):
     print("Training model...")
     print(model)
     parameters = filter(lambda p: p.requires_grad, model.parameters())
-
+    seed_rand(config.seed)
     if config.use_warmup_adam:
         optimizer = ScheduledOptim(optim.Adam(parameters, betas=(0.9, 0.98), eps=1e-9), d_model=256, n_warmup_steps=2000)
     elif config.use_sgd:
@@ -423,7 +440,7 @@ def train(model, dataset, config: Config):
         ground_law_y, predicts_law_y = [], []
         ground_term_y, predicts_term_y = [], []
 
-        for batch_idx, datapoint in enumerate(tqdm(train_dataloader)):
+        for batch_idx, datapoint in enumerate(train_dataloader):
             fact_lists, _, accu_label_lists, law_label_lists, term_lists, money_amount_lists, drug_weight_lists = datapoint
             accu_preds, law_preds, term_preds, accu_loss, law_loss, term_loss, _, _, _ = model.forward( \
                 legals, legals_len, arts, arts_sent_lent, charge_tong2id, id2charge_tong, art2id, id2art, fact_lists, \
@@ -600,6 +617,7 @@ if __name__ == '__main__':
             "valid_data_set": valid_dataloader
         }
 
+        seed_rand(args.seed)    
         model = NeurJudge(config)
         if config.HP_gpu:
             model.cuda()
@@ -627,4 +645,4 @@ if __name__ == '__main__':
         test_dataloader = DataLoader(test_dataset, batch_size=config.HP_batch_size, shuffle=False, collate_fn=collate_neur_judge_fn)
         model_path = os.path.join(args.loadmodel, "best.ckpt")
         model = load_model(model_path, config, True)
-        score = evaluate(model, valid_dataloader, "Test", config, 0)
+        score = evaluate(model, test_dataloader, "Test", config, 0)

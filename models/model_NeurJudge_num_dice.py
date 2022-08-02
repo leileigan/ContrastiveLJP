@@ -1,5 +1,4 @@
 from itertools import chain
-from unicodedata import bidirectional
 import numpy as np
 import torch
 import torch.nn as nn
@@ -7,10 +6,7 @@ import torch.nn.functional as F
 from torch.nn.modules.container import Sequential
 import torch.optim as optim
 import datetime
-from utils.config import Config
-import random, math
 from typing import List
-import math
 import json
 from torch.autograd import Variable
 import pickle as pk
@@ -65,7 +61,7 @@ class MaskGRU(nn.Module):
 
 # Version of NeurJudge with nn.GRU    
 class NeurJudge(nn.Module):
-    def __init__(self, config: Config):
+    def __init__(self, config):
         super(NeurJudge, self).__init__()
         self.id2charge = json.load(open('/data/ganleilei/law/ContrastiveLJP/NeurJudge_config_data/id2charge.json'))
 
@@ -98,13 +94,14 @@ class NeurJudge(nn.Module):
         self.dice_model = DICE(self.dice_config)
         self.dice_model.load_state_dict(torch.load(config.dice_model_path))
         for p in self.dice_model.parameters():
-            p.requires_grad = config.is_frazeDice
+            p.requires_grad = True
 
         self.time_pred = nn.Linear(self.hidden_dim*6 + self.dice_config.hidden_dim*2,11)
+        # self.time_pred = nn.Linear(self.hidden_dim*6,11)
 
         self.accu_loss = torch.nn.NLLLoss()
         self.law_loss = torch.nn.NLLLoss()
-        self.term_loss = torch.nn.NLLLoss()
+        self.term_loss = torch.nn.NLLLoss(reduction='none')
 
     def fact_separation(self,process,verdict_names,embs,encoder,circumstance,mask_attention,types):
         verdict, verdict_len = process.process_law(verdict_names,types)
@@ -129,13 +126,13 @@ class NeurJudge(nn.Module):
 
     def forward(self, charge, charge_sent_len, article,
                 article_sent_len, charge_tong2id, id2charge_tong, art2id, id2art,
-                documents, sent_lent, process, accu_labels, law_labels, term_labels, money_amount_lists, drug_weight_lists):
-        # deal the semantics of labels (i.e., charges and articles) 
+                documents, sent_lent, process, accu_labels, law_labels, term_labels, money_amount_lists, drug_weight_lists, epoch_idx):
+        # deal the semantics of labels (i.e., charges and articles)
         charge = self.embs(charge)
         article = self.embs(article)
         charge,_ = self.encoder_charge(charge)
         article,_ = self.encoder_charge(article)
-
+        bsz = term_labels.size(0)
         # encoder num
         money_amount_hidden, drug_weight_hidden = self.dice_model.encode_num(money_amount_lists, drug_weight_lists) 
 
@@ -184,9 +181,26 @@ class NeurJudge(nn.Module):
         fact_legal_time_hidden = term_message.mean(1)
         fact_legal_time_hidden = torch.cat((fact_legal_time_hidden, money_amount_hidden), dim=-1)
         time_out = self.time_pred(fact_legal_time_hidden)
-        
         term_log_softmax = F.log_softmax(time_out, dim=-1)
-        term_loss = self.term_loss(term_log_softmax, term_labels)
+
+        #class aware
+        if epoch_idx >= 100:
+            beta = 10
+            term_softmax = torch.softmax(time_out * beta, dim=-1) #[bsz, 11]
+            term_class = torch.FloatTensor(list(range(11))).expand(bsz, -1).to(DEVICE)
+            term_loss_weight = torch.sum(term_softmax * term_class, dim=-1) #[bsz]
+            # print(f"argmax weight: {torch.abs(torch.max(term_softmax, dim=-1)[1] - term_labels)}")
+            term_loss_weight = torch.abs((term_labels - term_loss_weight)) #[bsz]
+            # print(f"estimated weight: {term_loss_weight}")
+            term_cross_loss = self.term_loss(term_log_softmax, term_labels) #[bsz]
+            # print("term cross loss:", term_cross_loss)
+            term_aae_loss = torch.mean(term_loss_weight * term_cross_loss) 
+            term_cross_loss = torch.mean(term_cross_loss)
+            term_loss = 1*term_cross_loss + 1*term_aae_loss
+            print(f"term aae loss: {term_aae_loss.item()}, term cross loss: {term_cross_loss.item()}")
+        else:
+            term_loss = torch.mean(self.term_loss(term_log_softmax, term_labels)) 
+        
         _, term_predicts = torch.max(term_log_softmax, dim=1) # [batch_size * max_claims_num]
 
         return accu_predicts, law_predicts, term_predicts, accu_loss, law_loss, term_loss, df, fact_article_hidden, fact_legal_time_hidden
