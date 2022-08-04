@@ -10,25 +10,34 @@ import os
 import pickle
 import sys
 import time
-
+import random
 import torch
 from sklearn.metrics import (accuracy_score, classification_report, f1_score,
                              precision_score, recall_score, confusion_matrix)
 from torch import optim
 from torch.utils.data.dataloader import DataLoader
-from torch.utils.data.dataset import Dataset
+
 from models.model_NeurJudge import NeurJudge
 from utils.optim import ScheduledOptim
+from torch.utils.data import Dataset
 from transformers import AutoTokenizer
-from utils.config import seed_rand
 from utils.utils import Data_Process
+import numpy as np
 
 import torch.optim as optim
 from tqdm import tqdm
-import numpy as np
 
 os.chdir('/data/ganleilei/workspace/ContrastiveLJP')
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+def seed_rand(SEED_NUM):
+    torch.manual_seed(SEED_NUM)
+    random.seed(SEED_NUM)
+    np.random.seed(SEED_NUM)
+    torch.cuda.manual_seed(SEED_NUM)
+    torch.cuda.manual_seed_all(SEED_NUM)
+    torch.backends.cudnn.deterministic=True
+    torch.backends.cudnn.benchmark = False
 
 class Config:
     def __init__(self):
@@ -85,6 +94,7 @@ class Config:
         self.confused_matrix = None
         self.moco_hard_queue_size = 3000
 
+        self.seed = 10
 
     def show_data_summary(self):
         print("DATA SUMMARY START:")
@@ -126,22 +136,28 @@ class Config:
 
 class NeurJudgeDataset(Dataset):
 
-    def __init__(self, data, tokenizer, max_len, id2word_dict):
+    def __init__(self, data, tokenizer, max_len, id2word_dict, word2id_dict):
         self.tokenizer = tokenizer
         self.max_len = max_len
-        filtered_data = {'fact_list':[], 'accu_label_lists':[], 'law_label_lists':[], 'term_lists': [], 'raw_fact_lists': []}
+        filtered_data = {'fact_list':[], 'accu_label_lists':[], 'law_label_lists':[], 'term_lists': [], 
+                        'raw_fact_lists': [], 'money_amount_lists': [], 'drug_weight_lists': []}
         self.number_intensive_classes = list(range(120))
         # self.number_intensive_classes = [42]
         for index in range(len(data['fact_list'])):
-            if data['accu_label_lists'][index] not in self.number_intensive_classes: continue
+            if data['accu_label_lists'][index] not in self.number_intensive_classes: 
+                continue
+        
             filtered_data['fact_list'].append(data['fact_list'][index])
             filtered_data['accu_label_lists'].append(data['accu_label_lists'][index])
             filtered_data['law_label_lists'].append(data['law_label_lists'][index])
             filtered_data['term_lists'].append(data['term_lists'][index])
             filtered_data['raw_fact_lists'].append(data['raw_facts_list'][index])
-            
+            filtered_data['money_amount_lists'].append(data['money_amount_lists'][index])
+            filtered_data['drug_weight_lists'].append(data['drug_weight_lists'][index])
+                
         self.data = filtered_data
         self.id2word_dict = id2word_dict
+        self.word2id_dict = word2id_dict
 
     def __len__(self):
         return len(self.data['fact_list'])
@@ -160,41 +176,61 @@ class NeurJudgeDataset(Dataset):
         accu_label_lists = self.data['accu_label_lists'][index]
         law_label_lists = self.data['law_label_lists'][index]
         term_lists = self.data['term_lists'][index]
+        money_amount = [self.word2id_dict[w] for w in list(str(self.data['money_amount_lists'][index]))]
+        drug_weight = [self.word2id_dict[w] for w in list(str(self.data['drug_weight_lists'][index]))]
+        
         # if accu_label_lists in self.number_intensive_classes:
         #     print(raw_fact_list)
         #     print(law_label_lists)
         #     print(term_lists)
         #     print(self.data['raw_fact_lists'][index])
-        return fact_list, raw_fact_list, accu_label_lists, law_label_lists, term_lists 
+        return fact_list, raw_fact_list, accu_label_lists, law_label_lists, term_lists, money_amount, drug_weight
 
+
+word2id_dict = pickle.load(open("/data/ganleilei/law/ContrastiveLJP/w2id_thulac.pkl", 'rb'))
+id2word_dict = {item[1]: item[0] for item in word2id_dict.items()}
 
 def collate_neur_judge_fn(batch):
-    
-    batch_fact_list, batch_raw_fact_list, batch_law_label_lists, batch_accu_label_lists, batch_term_lists = [], [], [], [], []
+    batch_fact_list, batch_raw_fact_list, batch_law_label_lists, batch_accu_label_lists, batch_term_lists, batch_money_amount, batch_drug_weight = [], [], [], [], [], [], []
     for item in batch:
         batch_fact_list.append(item[0])
         batch_raw_fact_list.append(item[1])
         batch_accu_label_lists.append(item[2])
         batch_law_label_lists.append(item[3])
         batch_term_lists.append(item[4])
+        batch_money_amount.append(item[5])
+        batch_drug_weight.append(item[6])
+
+    max_money_amount_len = max([len(item) for item in batch_money_amount])
+    padded_money_amount_lists = []
+    for item in batch_money_amount:
+        padded_money_amount_lists.append([word2id_dict['0']] *(max_money_amount_len-len(item)) + item)
+
+    max_drug_weight_len = max([len(item) for item in batch_drug_weight])
+    padded_drug_weight_lists = []
+    for item in batch_drug_weight:
+        padded_drug_weight_lists.append([word2id_dict['0']] *(max_drug_weight_len-len(item)) + item)
 
     padded_fact_list = torch.LongTensor(batch_fact_list).to(DEVICE)
     padded_accu_label_lists = torch.LongTensor(batch_accu_label_lists).to(DEVICE)
     padded_law_label_lists = torch.LongTensor(batch_law_label_lists).to(DEVICE)
     padded_term_lists = torch.LongTensor(batch_term_lists).to(DEVICE)
+    padded_money_amount_lists = torch.LongTensor(padded_money_amount_lists).to(DEVICE)
+    padded_drug_weight_lists = torch.LongTensor(padded_drug_weight_lists).to(DEVICE)
 
-    return padded_fact_list, batch_raw_fact_list, padded_accu_label_lists, padded_law_label_lists, padded_term_lists
+    return padded_fact_list, batch_raw_fact_list, padded_accu_label_lists, padded_law_label_lists, padded_term_lists, padded_money_amount_lists, padded_drug_weight_lists
 
 
 def load_dataset(path):
-    train_path = os.path.join(path, "train_processed_thulac_Legal_basis_with_digit_number.pkl")
-    valid_path = os.path.join(path, "valid_processed_thulac_Legal_basis_with_digit_number.pkl")
-    test_path = os.path.join(path, "test_processed_thulac_Legal_basis_with_digit_number.pkl")
+    train_path = os.path.join(path, "train_processed_thulac_Legal_basis_with_fyb_annotate_number_field.pkl")
+    valid_path = os.path.join(path, "valid_processed_thulac_Legal_basis_with_fyb_annotate_number_field.pkl")
+    test_path = os.path.join(path, "test_processed_thulac_Legal_basis_with_fyb_annotate_number_field.pkl")
     
     train_dataset = pickle.load(open(train_path, mode='rb'))
     valid_dataset = pickle.load(open(valid_path, mode='rb'))
     test_dataset = pickle.load(open(test_path, mode='rb'))
 
+    print("train_dataset keys:", train_dataset.keys())
     print("train dataset sample len:", len(train_dataset['law_label_lists']))
     return train_dataset, valid_dataset, test_dataset
 
@@ -203,6 +239,7 @@ def load_model(model_dir, config, gpu):
     config.HP_gpu = gpu
     print("Load Model from file: ", model_dir)
     model = NeurJudge(config)
+    print(model)
     if config.HP_gpu:
         model = model.cuda()
     ## load model need consider if the model trained in GPU and load in CPU, or vice versa
@@ -276,10 +313,11 @@ def evaluate(model, valid_dataloader, process, name, epoch_idx):
     process = Data_Process()
     legals,legals_len,arts,arts_sent_lent,charge_tong2id,id2charge_tong,art2id,id2art = process.get_graph()
     legals,legals_len,arts,arts_sent_lent = legals.cuda(),legals_len.cuda(),arts.cuda(),arts_sent_lent.cuda()
+
     for batch_idx, datapoint in enumerate(valid_dataloader):
-        documents, _, accu_label_lists, law_label_lists, term_lists = datapoint
+        documents, _, accu_label_lists, law_label_lists, term_lists, _, _  = datapoint
         sent_lent = ""
-        accu_preds, law_preds, term_preds, accu_loss, law_loss, term_loss, _, _, _ = model(
+        accu_preds, law_preds, term_preds, accu_loss, law_loss, term_loss, _, _, _  = model(
             legals,legals_len,arts,arts_sent_lent, \
             charge_tong2id,id2charge_tong,art2id,id2art,documents, \
             sent_lent,process,accu_label_lists, law_label_lists, term_lists)
@@ -301,9 +339,51 @@ def evaluate(model, valid_dataloader, process, name, epoch_idx):
     print("Accu task accuracy: %.4f, Law task accuracy: %.4f, Term task accuracy: %.4f" % (accu_accuracy, law_accuracy, term_accuracy)) 
     # print("Confused matrix accu of 寻衅滋事罪:", confused_matrix_accu[1])
     # print("Confused matrix accu of 故意伤害罪:", confused_matrix_accu[111])
-    score = get_result(ground_accu_y, predicts_accu_y, ground_law_y, predicts_law_y, ground_term_y, predicts_term_y, name)
+    print("Confused accu matrix accu of 贩卖毒品罪:", confused_matrix_accu[42])
+    print("Confused accu matrix accu of 假冒注册商标罪:", confused_matrix_accu[8])
 
-    return score
+    score = get_result(ground_accu_y, predicts_accu_y, ground_law_y, predicts_law_y, ground_term_y, predicts_term_y, name)
+    abs_score_lists, accu_s_lists = [], []
+    target_classes =  list(range(119))
+    num_target_classes = [83, 11, 55, 16, 37, 102, 52, 107, 61, 12, 58, 75, 78, 38, 69, 60, 54, 94, 110, 88, 19, 30, 59, 26, 51, 118, 86, 49, 7] # number sensitive classes
+
+    # num_target_classes = [54, 86]
+
+    g_t_lists, p_t_lists = [], []
+    num_g_t_lists, num_p_t_lists = [], []
+    for g_y, p_y, g_t, p_t in zip(ground_accu_y, predicts_accu_y, ground_term_y, predicts_term_y):
+        if g_y in target_classes:
+            g_t_lists.append(g_t)
+            p_t_lists.append(p_t)
+
+        if g_y in num_target_classes:
+            num_g_t_lists.append(g_t)
+            num_p_t_lists.append(p_t)
+    
+    # print(list(zip(g_t_lists, p_t_lists)))
+    term_macro_f1 = f1_score(g_t_lists, p_t_lists, average="macro")
+    term_macro_precision = precision_score(g_t_lists, p_t_lists, average="macro")
+    term_macro_recall = recall_score(g_t_lists, p_t_lists, average="macro")
+
+    g_t_lists = np.array(g_t_lists)
+    p_t_lists = np.array(p_t_lists)
+    abs_error = sum(abs(g_t_lists - p_t_lists)) / len(g_t_lists)
+    abs_score_lists.append(abs_error)
+    
+    print(f"term macro f1: {term_macro_f1}, term_macro_precision: {term_macro_precision}, term_macro_recall: {term_macro_recall}, abs error: {abs_error}")
+
+    # evaluate on number sensitive classes
+    term_macro_f1 = f1_score(num_g_t_lists, num_p_t_lists, average="macro")
+    term_macro_precision = precision_score(num_g_t_lists, num_p_t_lists, average="macro")
+    term_macro_recall = recall_score(num_g_t_lists, num_p_t_lists, average="macro")
+
+    num_g_t_lists = np.array(num_g_t_lists)
+    num_p_t_lists = np.array(num_p_t_lists)
+    abs_error = sum(abs(num_g_t_lists - num_p_t_lists)) / len(num_g_t_lists)
+
+    print(f"number sensitive class term macro f1: {term_macro_f1}, term_macro_precision: {term_macro_precision}, term_macro_recall: {term_macro_recall}, abs error: {abs_error}")
+
+    return score, abs_error
 
 
 def train(model, dataset, config: Config):
@@ -312,14 +392,10 @@ def train(model, dataset, config: Config):
     valid_data_set = dataset["valid_data_set"]
     test_data_set = dataset["test_data_set"]
     print("config batch size:", config.HP_batch_size)
-    train_dataloader = DataLoader(train_data_set, batch_size=config.HP_batch_size, shuffle=True, collate_fn=collate_neur_judge_fn)
-    valid_dataloader = DataLoader(valid_data_set, batch_size=config.HP_batch_size, shuffle=False, collate_fn=collate_neur_judge_fn)
-    test_dataloader = DataLoader(test_data_set, batch_size=config.HP_batch_size, shuffle=False, collate_fn=collate_neur_judge_fn)
-
     print("Training model...")
     print(model)
     parameters = filter(lambda p: p.requires_grad, model.parameters())
-
+    seed_rand(config.seed)
     if config.use_warmup_adam:
         optimizer = ScheduledOptim(optim.Adam(parameters, betas=(0.9, 0.98), eps=1e-9), d_model=256, n_warmup_steps=2000)
     elif config.use_sgd:
@@ -355,13 +431,13 @@ def train(model, dataset, config: Config):
         ground_law_y, predicts_law_y = [], []
         ground_term_y, predicts_term_y = [], []
 
-        for batch_idx, datapoint in enumerate(tqdm(train_dataloader)):
-            fact_lists, _, accu_label_lists, law_label_lists, term_lists = datapoint
+        for batch_idx, datapoint in enumerate(train_dataloader):
+            fact_lists, _, accu_label_lists, law_label_lists, term_lists, _ , _  = datapoint
             accu_preds, law_preds, term_preds, accu_loss, law_loss, term_loss, _, _, _ = model.forward( \
                 legals, legals_len, arts, arts_sent_lent, charge_tong2id, id2charge_tong, art2id, id2art, fact_lists, \
                 config.MAX_SENTENCE_LENGTH, process, accu_label_lists, law_label_lists, term_lists)
 
-            loss = (accu_loss + term_loss + law_loss) / batch_size
+            loss = accu_loss + term_loss + law_loss
             sample_loss += loss.data
             sample_accu_loss += accu_loss.data
             sample_law_loss += law_loss.data
@@ -400,31 +476,21 @@ def train(model, dataset, config: Config):
         sys.stdout.flush()
 
         # evaluate dev data
-        current_score = evaluate(model, valid_dataloader, process,  "Dev", idx)
+        current_score, abs_score = evaluate(model, valid_dataloader, process,  "Dev", -1)
+        print(f"dev current score: {current_score}, abs score: {abs_score}, current score and abs score: {current_score + abs_score}")
+        
+        model_name = os.path.join(config.save_model_dir, f"{idx}.ckpt")
+        torch.save(model.state_dict(), model_name)
 
-        if current_score > best_dev:
-            print("Exceed previous best acc score:", best_dev)
-            no_imporv_epoch = 0
-            best_dev = current_score
-            # save model
-            model_name = os.path.join(config.save_model_dir, "best.ckpt")
-            torch.save(model.state_dict(), model_name)
-            # evaluate test data
-        else:
-            no_imporv_epoch += 1
-            if no_imporv_epoch >= 20:
-                print("early stop")
-                break
-       
-        _ = evaluate(model, test_dataloader, process, "Test", idx)
+        _ = evaluate(model, test_dataloader, process, "Test", -1)
 
 
 if __name__ == '__main__':
     print(datetime.datetime.now())
     parser = argparse.ArgumentParser(description='Contrastive Legal Judgement Prediction')
-    parser.add_argument('--data_path', default="data/NeurJudge/")
+    parser.add_argument('--data_path', default="/data/ganleilei/law/ContrastiveLJP/datasets/fyb_annotate/NeurJudge/")
     parser.add_argument('--status', default="train")
-    parser.add_argument('--savemodel', default="/data/ganleilei/law/ContrastiveLJP/results/NeurJudge/")
+    parser.add_argument('--savemodel', default="/data/ganleilei/law/ContrastiveLJP/results/NeurJudge/ChargeLawTerm")
     parser.add_argument('--loadmodel', default="")
 
     parser.add_argument('--embedding_path', default='/data/ganleilei/law/ContrastiveLJP/cail_thulac.npy')
@@ -498,17 +564,22 @@ if __name__ == '__main__':
         tokenizer = AutoTokenizer.from_pretrained(args.bert_path)
         train_data, valid_data, test_data = load_dataset(args.data_path)
         
-        train_dataset = NeurJudgeDataset(train_data, tokenizer, config.MAX_SENTENCE_LENGTH, config.id2word_dict)
-        valid_dataset = NeurJudgeDataset(valid_data, tokenizer, config.MAX_SENTENCE_LENGTH, config.id2word_dict)
-        test_dataset = NeurJudgeDataset(test_data, tokenizer, config.MAX_SENTENCE_LENGTH, config.id2word_dict)
+        train_dataset = NeurJudgeDataset(train_data, tokenizer, config.MAX_SENTENCE_LENGTH, config.id2word_dict, config.word2id_dict)
+        valid_dataset = NeurJudgeDataset(valid_data, tokenizer, config.MAX_SENTENCE_LENGTH, config.id2word_dict, config.word2id_dict)
+        test_dataset = NeurJudgeDataset(test_data, tokenizer, config.MAX_SENTENCE_LENGTH, config.id2word_dict, config.word2id_dict)
         print("train_data %d, valid_data %d, test_data %d." % (
             len(train_dataset), len(valid_dataset), len(test_dataset)))
 
+        train_dataloader = DataLoader(train_dataset, batch_size=config.HP_batch_size, shuffle=True, collate_fn=collate_neur_judge_fn)
+        valid_dataloader = DataLoader(valid_dataset, batch_size=config.HP_batch_size, shuffle=False, collate_fn=collate_neur_judge_fn)
+        test_dataloader = DataLoader(test_dataset, batch_size=config.HP_batch_size, shuffle=False, collate_fn=collate_neur_judge_fn)
+
         data_dict = {
-            "train_data_set": train_dataset,
-            "test_data_set": test_dataset,
-            "valid_data_set": valid_dataset
+            "train_data_set": train_dataloader,
+            "test_data_set": test_dataloader,
+            "valid_data_set": valid_dataloader
         }
+        seed_rand(args.seed)
 
         model = NeurJudge(config)
         if config.HP_gpu:
@@ -523,17 +594,18 @@ if __name__ == '__main__':
             exit(1)
 
         print("\nLoading data...")
-        savedset_path = "/data/ganleilei/law/ContrastiveLJP/results/NeurJudge/data.dset"
+        savedset_path = os.path.join(args.loadmodel, "data.dset")
         config = load_data_setting(savedset_path)
+        config.HP_hidden_dim = args.HP_hidden_dim
         tokenizer = AutoTokenizer.from_pretrained(args.bert_path)
         train_data, valid_data, test_data = load_dataset(args.data_path)
-        train_dataset = NeurJudgeDataset(train_data, tokenizer, config.MAX_SENTENCE_LENGTH, config.id2word_dict)
-        valid_dataset = NeurJudgeDataset(valid_data, tokenizer, config.MAX_SENTENCE_LENGTH, config.id2word_dict)
-        test_dataset = NeurJudgeDataset(test_data, tokenizer, config.MAX_SENTENCE_LENGTH, config.id2word_dict)
+        train_dataset = NeurJudgeDataset(train_data, tokenizer, config.MAX_SENTENCE_LENGTH, config.id2word_dict, config.word2id_dict)
+        valid_dataset = NeurJudgeDataset(valid_data, tokenizer, config.MAX_SENTENCE_LENGTH, config.id2word_dict, config.word2id_dict)
+        test_dataset = NeurJudgeDataset(test_data, tokenizer, config.MAX_SENTENCE_LENGTH, config.id2word_dict, config.word2id_dict)
 
         train_dataloader = DataLoader(train_dataset, batch_size=config.HP_batch_size, shuffle=False, collate_fn=collate_neur_judge_fn)
         valid_dataloader = DataLoader(valid_dataset, batch_size=config.HP_batch_size, shuffle=False, collate_fn=collate_neur_judge_fn)
         test_dataloader = DataLoader(test_dataset, batch_size=config.HP_batch_size, shuffle=False, collate_fn=collate_neur_judge_fn)
-
-        model = load_model(args.loadmodel, config, True)
+        model_path = os.path.join(args.loadmodel, "best.ckpt")
+        model = load_model(model_path, config, True)
         score = evaluate(model, test_dataloader, "Test", config, 0)
