@@ -151,6 +151,7 @@ class NeurJudgeDataset(Dataset):
         filtered_data = {'fact_list':[], 'accu_label_lists':[], 'law_label_lists':[], 'term_lists': [], 
                         'raw_fact_lists': [], 'money_amount_lists': [], 'drug_weight_lists': []}
         self.number_intensive_classes = list(range(120))
+        # self.num_target_classes = [83, 11, 55, 16, 37, 102, 52, 107, 61, 12, 58, 75, 78, 38, 69, 60, 54, 94, 110, 88, 19, 30, 59, 26, 51, 118, 86, 49, 7] # number sensitive classes
         # self.number_intensive_classes = [54, 86]
         for index in range(len(data['fact_list'])):
             if data['accu_label_lists'][index] not in self.number_intensive_classes: 
@@ -357,8 +358,8 @@ def evaluate(model, valid_dataloader, process, name, epoch_idx):
     abs_score_lists, accu_s_lists = [], []
     # for i in range(119):
     target_classes = list(range(120))
-    # num_target_classes = [83, 11, 55, 16, 37, 102, 52, 107, 61, 12, 58, 75, 78, 38, 69, 60, 54, 94, 110, 88, 19, 30, 59, 26, 51, 118, 86, 49, 7] # number sensitive classes
-    num_target_classes = [54, 86]
+    num_target_classes = [83, 11, 55, 16, 37, 102, 52, 107, 61, 12, 58, 75, 78, 38, 69, 60, 54, 94, 110, 88, 19, 30, 59, 26, 51, 118, 86, 49, 7] # number sensitive classes
+    # num_target_classes = [54, 86]
     g_t_lists, p_t_lists = [], []
     num_g_t_lists, num_p_t_lists = [], []
     for g_y, p_y, g_t, p_t in zip(ground_accu_y, predicts_accu_y, ground_term_y, predicts_term_y):
@@ -388,9 +389,9 @@ def evaluate(model, valid_dataloader, process, name, epoch_idx):
 
     num_g_t_lists = np.array(num_g_t_lists)
     num_p_t_lists = np.array(num_p_t_lists)
-    abs_error = sum(abs(num_g_t_lists - num_p_t_lists)) / len(num_g_t_lists)
+    num_abs_error = sum(abs(num_g_t_lists - num_p_t_lists)) / len(num_g_t_lists)
 
-    print(f"number sensitive class term macro f1: {term_macro_f1}, term_macro_precision: {term_macro_precision}, term_macro_recall: {term_macro_recall}, abs error: {abs_error}")
+    print(f"number sensitive class term macro f1: {term_macro_f1}, term_macro_precision: {term_macro_precision}, term_macro_recall: {term_macro_recall}, abs error: {num_abs_error}")
 
     return (score - abs_error) / 4
 
