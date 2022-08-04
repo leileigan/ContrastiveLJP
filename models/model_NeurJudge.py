@@ -6,8 +6,7 @@ import torch.nn.functional as F
 from torch.nn.modules.container import Sequential
 import torch.optim as optim
 import datetime
-from utils.config import Config
-import random, math
+import math
 from typing import List
 import math
 import json
@@ -62,7 +61,7 @@ class MaskGRU(nn.Module):
 
 # Version of NeurJudge with nn.GRU    
 class NeurJudge(nn.Module):
-    def __init__(self, config: Config):
+    def __init__(self, config):
         super(NeurJudge, self).__init__()
         self.id2charge = json.load(open('/data/ganleilei/law/ContrastiveLJP/NeurJudge_config_data/id2charge.json'))
 
@@ -84,7 +83,8 @@ class NeurJudge(nn.Module):
         self.id2article = json.load(open('/data/ganleilei/law/ContrastiveLJP/NeurJudge_config_data/id2article.json'))
         self.mask_attention_article = Mask_Attention()
 
-        self.encoder_charge = nn.GRU(self.data_size,self.hidden_dim, batch_first=True, bidirectional=True)
+        self.encoder_charge = nn.GRU(self.data_size, self.hidden_dim, batch_first=True, bidirectional=True)
+
         self.charge_pred = nn.Linear(self.hidden_dim*2,119)
         self.article_pred = nn.Linear(self.hidden_dim*4,103)
         self.time_pred = nn.Linear(self.hidden_dim*6,11)
@@ -122,10 +122,9 @@ class NeurJudge(nn.Module):
         article = self.embs(article)
         charge,_ = self.encoder_charge(charge)
         article,_ = self.encoder_charge(article)
-       
+
         # deal the case fact
         doc = self.embs(documents)
-        batch_size = doc.size(0)
         d_hidden,_ = self.encoder(doc) 
         
         # the charge prediction
