@@ -393,7 +393,7 @@ def evaluate(model, valid_dataloader, process, name, epoch_idx):
 
     print(f"number sensitive class term macro f1: {term_macro_f1}, term_macro_precision: {term_macro_precision}, term_macro_recall: {term_macro_recall}, abs error: {num_abs_error}")
 
-    return (score - abs_error) / 4
+    return score, abs_error 
 
 
 def train(model, dataset, config: Config):
@@ -489,22 +489,12 @@ def train(model, dataset, config: Config):
         sys.stdout.flush()
 
         # evaluate dev data
-        current_score = evaluate(model, valid_dataloader, process,  "Dev", -1)
+        current_score, abs_score = evaluate(model, valid_dataloader, process,  "Dev", -1)
+        print(f"dev current score: {current_score}, abs score: {abs_score}, current score and abs score: {current_score + abs_score}")
+        
+        model_name = os.path.join(config.save_model_dir, f"{idx}.ckpt")
+        torch.save(model.state_dict(), model_name)
 
-        if current_score > best_dev:
-            print("Exceed previous best acc score:", best_dev)
-            no_imporv_epoch = 0
-            best_dev = current_score
-            # save model
-            model_name = os.path.join(config.save_model_dir, "best.ckpt")
-            torch.save(model.state_dict(), model_name)
-            # evaluate test data
-        else:
-            no_imporv_epoch += 1
-            if no_imporv_epoch >= 20:
-                print("early stop")
-                break
-       
         _ = evaluate(model, test_dataloader, process, "Test", -1)
 
 
