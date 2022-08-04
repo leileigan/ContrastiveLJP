@@ -96,8 +96,7 @@ class NeurJudge(nn.Module):
         for p in self.dice_model.parameters():
             p.requires_grad = True
 
-        # self.time_pred = nn.Linear(self.hidden_dim*6 + self.dice_config.hidden_dim*2,11)
-        self.time_pred = nn.Linear(self.hidden_dim*6,11)
+        self.time_pred = nn.Linear(self.hidden_dim*6 + self.dice_config.hidden_dim*2,11)
 
         self.accu_loss = torch.nn.NLLLoss()
         self.law_loss = torch.nn.NLLLoss()
@@ -179,7 +178,7 @@ class NeurJudge(nn.Module):
         term_message,_ = self.encoder_term(term_message)
 
         fact_legal_time_hidden = term_message.mean(1)
-        # fact_legal_time_hidden = torch.cat((fact_legal_time_hidden, money_amount_hidden), dim=-1)
+        fact_legal_time_hidden = torch.cat((fact_legal_time_hidden, money_amount_hidden), dim=-1)
         time_out = self.time_pred(fact_legal_time_hidden)
         term_log_softmax = F.log_softmax(time_out, dim=-1)
 
