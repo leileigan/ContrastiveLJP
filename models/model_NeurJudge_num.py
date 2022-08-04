@@ -7,7 +7,6 @@ import torch.nn.functional as F
 from torch.nn.modules.container import Sequential
 import torch.optim as optim
 import datetime
-from utils.config import Config
 import random, math
 from typing import List
 import math
@@ -63,7 +62,7 @@ class MaskGRU(nn.Module):
 
 # Version of NeurJudge with nn.GRU    
 class NeurJudge(nn.Module):
-    def __init__(self, config: Config):
+    def __init__(self, config):
         super(NeurJudge, self).__init__()
         self.id2charge = json.load(open('/data/ganleilei/law/ContrastiveLJP/NeurJudge_config_data/id2charge.json'))
 
@@ -90,7 +89,7 @@ class NeurJudge(nn.Module):
 
         self.charge_pred = nn.Linear(self.hidden_dim*2,119)
         self.article_pred = nn.Linear(self.hidden_dim*4,103)
-        self.time_pred = nn.Linear(self.hidden_dim*10,11)
+        self.time_pred = nn.Linear(self.hidden_dim*6,11)
 
         self.accu_loss = torch.nn.NLLLoss()
         self.law_loss = torch.nn.NLLLoss()
@@ -177,7 +176,7 @@ class NeurJudge(nn.Module):
         term_message,_ = self.encoder_term(term_message)
 
         fact_legal_time_hidden = term_message.mean(1)
-        fact_legal_time_hidden = torch.cat((fact_legal_time_hidden, money_amount_hidden, drug_weight_hidden), dim=-1)
+        # fact_legal_time_hidden = torch.cat((fact_legal_time_hidden, money_amount_hidden, drug_weight_hidden), dim=-1)
         time_out = self.time_pred(fact_legal_time_hidden)
         
         term_log_softmax = F.log_softmax(time_out, dim=-1)

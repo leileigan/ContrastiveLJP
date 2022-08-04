@@ -10,7 +10,7 @@ import os
 import pickle
 import sys
 import time
-
+import random
 import torch
 from sklearn.metrics import (accuracy_score, classification_report, f1_score,
                              precision_score, recall_score, confusion_matrix)
@@ -21,7 +21,6 @@ from models.model_NeurJudge_num import NeurJudge
 from utils.optim import ScheduledOptim
 from torch.utils.data import Dataset
 from transformers import AutoTokenizer
-from utils.config import seed_rand
 from utils.utils import Data_Process
 import numpy as np
 
@@ -30,6 +29,15 @@ from tqdm import tqdm
 
 os.chdir('/data/ganleilei/workspace/ContrastiveLJP')
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+def seed_rand(SEED_NUM):
+    torch.manual_seed(SEED_NUM)
+    random.seed(SEED_NUM)
+    np.random.seed(SEED_NUM)
+    torch.cuda.manual_seed(SEED_NUM)
+    torch.cuda.manual_seed_all(SEED_NUM)
+    torch.backends.cudnn.deterministic=True
+    torch.backends.cudnn.benchmark = False
 
 class Config:
     def __init__(self):
@@ -213,9 +221,9 @@ def collate_neur_judge_fn(batch):
 
 
 def load_dataset(path):
-    train_path = os.path.join(path, "train_processed_thulac_Legal_basis_with_number_field.pkl")
-    valid_path = os.path.join(path, "valid_processed_thulac_Legal_basis_with_number_field.pkl")
-    test_path = os.path.join(path, "test_processed_thulac_Legal_basis_with_number_field.pkl")
+    train_path = os.path.join(path, "train_processed_thulac_Legal_basis_with_fyb_annotate_number_field.pkl")
+    valid_path = os.path.join(path, "valid_processed_thulac_Legal_basis_with_fyb_annotate_number_field.pkl")
+    test_path = os.path.join(path, "test_processed_thulac_Legal_basis_with_fyb_annotate_number_field.pkl")
     
     train_dataset = pickle.load(open(train_path, mode='rb'))
     valid_dataset = pickle.load(open(valid_path, mode='rb'))
@@ -336,23 +344,46 @@ def evaluate(model, valid_dataloader, process, name, epoch_idx):
 
     score = get_result(ground_accu_y, predicts_accu_y, ground_law_y, predicts_law_y, ground_term_y, predicts_term_y, name)
     abs_score_lists, accu_s_lists = [], []
-    for i in range(119):
-        s_g_y = i
-        g_t_lists, p_t_lists = [], []
-        for g_y, p_y, g_t, p_t in zip(ground_accu_y, predicts_accu_y, ground_term_y, predicts_term_y):
-            if g_y == s_g_y:
-                g_t_lists.append(g_t)
-                p_t_lists.append(p_t)
-        
-        # print(list(zip(g_t_lists, p_t_lists)))
-        g_t_lists = np.array(g_t_lists)
-        p_t_lists = np.array(p_t_lists)
-        abs_error = sum(abs(g_t_lists - p_t_lists)) / len(g_t_lists)
-        abs_score_lists.append(abs_error)
+    target_classes =  list(range(119))
+    num_target_classes = [83, 11, 55, 16, 37, 102, 52, 107, 61, 12, 58, 75, 78, 38, 69, 60, 54, 94, 110, 88, 19, 30, 59, 26, 51, 118, 86, 49, 7] # number sensitive classes
+
+    # num_target_classes = [54, 86]
+
+    g_t_lists, p_t_lists = [], []
+    num_g_t_lists, num_p_t_lists = [], []
+    for g_y, p_y, g_t, p_t in zip(ground_accu_y, predicts_accu_y, ground_term_y, predicts_term_y):
+        if g_y in target_classes:
+            g_t_lists.append(g_t)
+            p_t_lists.append(p_t)
+
+        if g_y in num_target_classes:
+            num_g_t_lists.append(g_t)
+            num_p_t_lists.append(p_t)
     
-    print("average abs error lists:", sum(abs_score_lists)/len(abs_score_lists))
-    print(np.argsort(np.array(abs_score_lists)))
-    return score
+    # print(list(zip(g_t_lists, p_t_lists)))
+    term_macro_f1 = f1_score(g_t_lists, p_t_lists, average="macro")
+    term_macro_precision = precision_score(g_t_lists, p_t_lists, average="macro")
+    term_macro_recall = recall_score(g_t_lists, p_t_lists, average="macro")
+
+    g_t_lists = np.array(g_t_lists)
+    p_t_lists = np.array(p_t_lists)
+    abs_error = sum(abs(g_t_lists - p_t_lists)) / len(g_t_lists)
+    abs_score_lists.append(abs_error)
+    
+    print(f"term macro f1: {term_macro_f1}, term_macro_precision: {term_macro_precision}, term_macro_recall: {term_macro_recall}, abs error: {abs_error}")
+
+    # evaluate on number sensitive classes
+    term_macro_f1 = f1_score(num_g_t_lists, num_p_t_lists, average="macro")
+    term_macro_precision = precision_score(num_g_t_lists, num_p_t_lists, average="macro")
+    term_macro_recall = recall_score(num_g_t_lists, num_p_t_lists, average="macro")
+
+    num_g_t_lists = np.array(num_g_t_lists)
+    num_p_t_lists = np.array(num_p_t_lists)
+    abs_error = sum(abs(num_g_t_lists - num_p_t_lists)) / len(num_g_t_lists)
+
+    print(f"number sensitive class term macro f1: {term_macro_f1}, term_macro_precision: {term_macro_precision}, term_macro_recall: {term_macro_recall}, abs error: {abs_error}")
+
+    return (score - abs_error) / 4
 
 
 def train(model, dataset, config: Config):
