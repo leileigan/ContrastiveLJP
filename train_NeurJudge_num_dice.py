@@ -490,7 +490,7 @@ def train(model, dataset, config: Config):
 
         # evaluate dev data
         current_score, abs_score = evaluate(model, valid_dataloader, process,  "Dev", -1)
-        print(f"dev current score: {current_score}, abs score: {abs_score}, current score and abs score: {current_score + abs_score}")
+        print(f"dev current score: {current_score}, abs score: {abs_score}, current score and abs score: {current_score - abs_score}")
         
         model_name = os.path.join(config.save_model_dir, f"{idx}.ckpt")
         torch.save(model.state_dict(), model_name)
