@@ -555,6 +555,7 @@ if __name__ == '__main__':
         config.word2id_dict = pickle.load(open(args.word2id_dict, 'rb'))
         config.id2word_dict = {item[1]: item[0] for item in config.word2id_dict.items()}
         config.bert_path = args.bert_path
+        config.seed = args.seed
 
         config.load_word_pretrain_emb(args.embedding_path)
         save_data_setting(config, os.path.join(config.save_model_dir,  'data.dset'))
