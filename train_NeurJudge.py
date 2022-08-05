@@ -300,7 +300,7 @@ def get_result(accu_target, accu_preds, law_target, law_preds, term_target, term
     print("Law task: macro_f1:%.4f, macro_precision:%.4f, macro_recall:%.4f" % (law_macro_f1, law_macro_precision, law_macro_recall))
     print("Term task: macro_f1:%.4f, macro_precision:%.4f, macro_recall:%.4f" % (term_macro_f1, term_macro_precision, term_macro_recall))
 
-    return (accu_macro_f1 + law_macro_f1 + term_macro_f1) / 3
+    return (accu_macro_f1 + law_macro_f1 + term_macro_f1)
     # return accu_macro_f1
 
 
@@ -477,7 +477,7 @@ def train(model, dataset, config: Config):
 
         # evaluate dev data
         current_score, abs_score = evaluate(model, valid_dataloader, process,  "Dev", -1)
-        print(f"dev current score: {current_score}, abs score: {abs_score}, current score and abs score: {current_score + abs_score}")
+        print(f"dev current score: {current_score}, abs score: {abs_score}, current score and abs score: {current_score - abs_score}")
         
         model_name = os.path.join(config.save_model_dir, f"{idx}.ckpt")
         torch.save(model.state_dict(), model_name)
