@@ -10,6 +10,7 @@ import os
 import pickle
 import sys
 import time
+import random
 
 import torch
 from sklearn.metrics import (accuracy_score, classification_report, f1_score,
@@ -19,10 +20,8 @@ from torch.utils.data.dataloader import DataLoader
 from torch.utils.data import Dataset
 
 from models.model_NeurJudge_moco_hmc import MoCo
-from utils.config import Config
 from utils.optim import ScheduledOptim
 from transformers import AutoTokenizer
-from utils.config import seed_rand
 
 from utils.utils import Data_Process
 import torch.optim as optim
@@ -31,6 +30,16 @@ import numpy as np
 
 os.chdir('/data/ganleilei/workspace/ContrastiveLJP')
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+def seed_rand(SEED_NUM):
+    torch.manual_seed(SEED_NUM)
+    random.seed(SEED_NUM)
+    np.random.seed(SEED_NUM)
+    torch.cuda.manual_seed(SEED_NUM)
+    torch.cuda.manual_seed_all(SEED_NUM)
+    torch.backends.cudnn.deterministic=True
+    torch.backends.cudnn.benchmark = False
+
 
 class Config:
     def __init__(self):
@@ -86,6 +95,9 @@ class Config:
         self.warm_epoch = 0
         self.confused_matrix = None
         self.moco_hard_queue_size = 3000
+        self.penalty = [1, 0.0001, 0.000001]
+
+        self.seed = 10
 
 
     def show_data_summary(self):
@@ -116,6 +128,7 @@ class Config:
         print("     Queue size          :  %s" % (self.moco_queue_size))
         print("     Alpha               :  %s" % (self.alpha))
         print("     Hard queue size     :  %s" % (self.moco_hard_queue_size))
+        print("     Layer penaylty      :  %s" % (self.penalty))
 
         print("DATA SUMMARY END.")
         sys.stdout.flush()
@@ -189,9 +202,9 @@ def collate_neur_judge_fn(batch):
 
 
 def load_dataset(path):
-    train_path = os.path.join(path, "train_processed_thulac_Legal_basis_with_digit_number.pkl")
-    valid_path = os.path.join(path, "valid_processed_thulac_Legal_basis_with_digit_number.pkl")
-    test_path = os.path.join(path, "test_processed_thulac_Legal_basis_with_digit_number.pkl")
+    train_path = os.path.join(path, "train_processed_thulac_Legal_basis_with_fyb_annotate_number_field.pkl")
+    valid_path = os.path.join(path, "valid_processed_thulac_Legal_basis_with_fyb_annotate_number_field.pkl")
+    test_path = os.path.join(path, "test_processed_thulac_Legal_basis_with_fyb_annotate_number_field.pkl")
     
     train_dataset = pickle.load(open(train_path, mode='rb'))
     valid_dataset = pickle.load(open(valid_path, mode='rb'))
@@ -243,7 +256,7 @@ def get_result(accu_target, accu_preds, law_target, law_preds, term_target, term
     print("Law task: macro_f1:%.4f, macro_precision:%.4f, macro_recall:%.4f" % (law_macro_f1, law_macro_precision, law_macro_recall))
     print("Term task: macro_f1:%.4f, macro_precision:%.4f, macro_recall:%.4f" % (term_macro_f1, term_macro_precision, term_macro_recall))
 
-    return (accu_macro_f1 + law_macro_f1 + term_macro_f1) / 3
+    return accu_macro_f1 + law_macro_f1 + term_macro_f1
     # return accu_macro_f1
 
 
@@ -281,8 +294,46 @@ def evaluate(model, valid_dataloader, process, name, epoch_idx):
     # print("Confused matrix accu of 寻衅滋事罪:", confused_matrix_accu[1])
     # print("Confused matrix accu of 故意伤害罪:", confused_matrix_accu[111])
     score = get_result(ground_accu_y, predicts_accu_y, ground_law_y, predicts_law_y, ground_term_y, predicts_term_y, name)
+    
+    abs_score_lists, accu_s_lists = [], []
+    # for i in range(119):
+    target_classes = list(range(120))
+    num_target_classes = [83, 11, 55, 16, 37, 102, 52, 107, 61, 12, 58, 75, 78, 38, 69, 60, 54, 94, 110, 88, 19, 30, 59, 26, 51, 118, 86, 49, 7] # number sensitive classes
+    # num_target_classes = [54, 86]
+    g_t_lists, p_t_lists = [], []
+    num_g_t_lists, num_p_t_lists = [], []
+    for g_y, p_y, g_t, p_t in zip(ground_accu_y, predicts_accu_y, ground_term_y, predicts_term_y):
+        if g_y in target_classes:
+            g_t_lists.append(g_t)
+            p_t_lists.append(p_t)
+        
+        if g_y in num_target_classes:
+            num_g_t_lists.append(g_t)
+            num_p_t_lists.append(p_t)
 
-    return score
+    # print(list(zip(g_t_lists, p_t_lists)))
+    term_macro_f1 = f1_score(g_t_lists, p_t_lists, average="macro")
+    term_macro_precision = precision_score(g_t_lists, p_t_lists, average="macro")
+    term_macro_recall = recall_score(g_t_lists, p_t_lists, average="macro")
+
+    g_t_lists = np.array(g_t_lists)
+    p_t_lists = np.array(p_t_lists)
+    abs_error = sum(abs(g_t_lists - p_t_lists)) / len(g_t_lists)
+
+    print(f"term macro f1: {term_macro_f1}, term_macro_precision: {term_macro_precision}, term_macro_recall: {term_macro_recall}, abs error: {abs_error}")
+    
+    # evaluate on number sensitive classes
+    term_macro_f1 = f1_score(num_g_t_lists, num_p_t_lists, average="macro")
+    term_macro_precision = precision_score(num_g_t_lists, num_p_t_lists, average="macro")
+    term_macro_recall = recall_score(num_g_t_lists, num_p_t_lists, average="macro")
+
+    num_g_t_lists = np.array(num_g_t_lists)
+    num_p_t_lists = np.array(num_p_t_lists)
+    num_abs_error = sum(abs(num_g_t_lists - num_p_t_lists)) / len(num_g_t_lists)
+
+    print(f"number sensitive class term macro f1: {term_macro_f1}, term_macro_precision: {term_macro_precision}, term_macro_recall: {term_macro_recall}, abs error: {num_abs_error}")
+
+    return score, abs_error
 
 
 def train(model, dataset, config: Config):
@@ -291,10 +342,6 @@ def train(model, dataset, config: Config):
     valid_data_set = dataset["valid_data_set"]
     test_data_set = dataset["test_data_set"]
     print("config batch size:", config.HP_batch_size)
-    train_dataloader = DataLoader(train_data_set, batch_size=config.HP_batch_size, shuffle=True, collate_fn=collate_neur_judge_fn)
-    valid_dataloader = DataLoader(valid_data_set, batch_size=config.HP_batch_size, shuffle=False, collate_fn=collate_neur_judge_fn)
-    test_dataloader = DataLoader(test_data_set, batch_size=config.HP_batch_size, shuffle=False, collate_fn=collate_neur_judge_fn)
-
     print("Training model...")
     print(model)
     parameters = filter(lambda p: p.requires_grad, model.parameters())
@@ -334,7 +381,7 @@ def train(model, dataset, config: Config):
         ground_law_y, predicts_law_y = [], []
         ground_term_y, predicts_term_y = [], []
 
-        for batch_idx, datapoint in enumerate(tqdm(train_dataloader)):
+        for batch_idx, datapoint in enumerate(train_dataloader):
             documents, _, accu_label_lists, law_label_lists, term_lists = datapoint
             sent_lent = ""
             contra_loss, accu_loss, law_loss, term_loss, accu_preds, law_preds, term_preds = \
@@ -342,7 +389,7 @@ def train(model, dataset, config: Config):
                               charge_tong2id, id2charge_tong, art2id, id2art, documents,
                               sent_lent, process, DEVICE, accu_label_lists, law_label_lists, term_lists)
 
-            loss = (accu_loss + term_loss + law_loss) / batch_size + config.alpha  * contra_loss
+            loss = accu_loss + term_loss + law_loss + config.alpha  * contra_loss
             sample_loss += loss.data
             sample_accu_loss += accu_loss.data
             sample_law_loss += law_loss.data
@@ -382,31 +429,21 @@ def train(model, dataset, config: Config):
         sys.stdout.flush()
 
         # evaluate dev data
-        current_score = evaluate(model, valid_dataloader, process,  "Dev", idx)
+        current_score, abs_score = evaluate(model, valid_dataloader, process,  "Dev", -1)
+        print(f"dev current score: {current_score}, abs score: {abs_score}, current score and abs score: {current_score - abs_score}")
+        
+        model_name = os.path.join(config.save_model_dir, f"{idx}.ckpt")
+        torch.save(model.state_dict(), model_name)
 
-        if current_score > best_dev:
-            print("Exceed previous best acc score:", best_dev)
-            no_imporv_epoch = 0
-            best_dev = current_score
-            # save model
-            model_name = os.path.join(config.save_model_dir, "best.ckpt")
-            torch.save(model.state_dict(), model_name)
-            # evaluate test data
-        else:
-            no_imporv_epoch += 1
-            if no_imporv_epoch >= 20:
-                print("early stop")
-                break
-       
-        _ = evaluate(model, test_dataloader, process, "Test", idx)
+        _ = evaluate(model, test_dataloader, process, "Test", -1)
 
 
 if __name__ == '__main__':
     print(datetime.datetime.now())
     parser = argparse.ArgumentParser(description='Contrastive Legal Judgement Prediction')
-    parser.add_argument('--data_path', default="data/NeurJudge/")
+    parser.add_argument('--data_path', default="/data/ganleilei/law/ContrastiveLJP/datasets/fyb_annotate/NeurJudge/")
     parser.add_argument('--status', default="train")
-    parser.add_argument('--savemodel', default="/data/ganleilei/law/ContrastiveLJP/results/NeurJudge/NeurJudge_moco_hmce")
+    parser.add_argument('--savemodel', default="/data/ganleilei/law/ContrastiveLJP/results/NeurJudge/NeurJudge_moco_hmc")
     parser.add_argument('--loadmodel', default="")
 
     parser.add_argument('--embedding_path', default='/data/ganleilei/law/ContrastiveLJP/cail_thulac.npy')
@@ -415,7 +452,7 @@ if __name__ == '__main__':
     parser.add_argument('--word_emb_dim', default=200)
     parser.add_argument('--MAX_SENTENCE_LENGTH', default=510)
 
-    parser.add_argument('--HP_iteration', default=20, type=int)
+    parser.add_argument('--HP_iteration', default=16, type=int)
     parser.add_argument('--HP_batch_size', default=128, type=int)
     parser.add_argument('--HP_hidden_dim', default=256, type=int)
     parser.add_argument('--HP_dropout', default=0.2, type=float)
@@ -435,6 +472,7 @@ if __name__ == '__main__':
     parser.add_argument('--moco_queue_size', default=65536, type=int)
     parser.add_argument('--moco_momentum', default=0.999, type=float)
     parser.add_argument('--moco_temperature', default=0.07, type=float)
+    parser.add_argument('--layer_penalty', nargs='+', type=float)
 
     parser.add_argument('--law_relation_threshold', default=0.3)
 
@@ -470,6 +508,8 @@ if __name__ == '__main__':
         config.word2id_dict = pickle.load(open(args.word2id_dict, 'rb'))
         config.id2word_dict = {item[1]: item[0] for item in config.word2id_dict.items()}
         config.bert_path = args.bert_path
+        config.seed = args.seed
+        config.penalty = args.layer_penalty
 
         config.load_word_pretrain_emb(args.embedding_path)
         save_data_setting(config, os.path.join(config.save_model_dir,  'data.dset'))
@@ -485,12 +525,18 @@ if __name__ == '__main__':
 
         print("train_data %d, valid_data %d, test_data %d." % (
             len(train_dataset), len(valid_dataset), len(test_dataset)))
+       
+        train_dataloader = DataLoader(train_dataset, batch_size=config.HP_batch_size, shuffle=True, collate_fn=collate_neur_judge_fn)
+        valid_dataloader = DataLoader(valid_dataset, batch_size=config.HP_batch_size, shuffle=False, collate_fn=collate_neur_judge_fn)
+        test_dataloader = DataLoader(test_dataset, batch_size=config.HP_batch_size, shuffle=False, collate_fn=collate_neur_judge_fn)
+
         data_dict = {
-            "train_data_set": train_dataset,
-            "test_data_set": test_dataset,
-            "valid_data_set": valid_dataset
+            "train_data_set": train_dataloader,
+            "test_data_set": test_dataloader,
+            "valid_data_set": valid_dataloader
         }
 
+        seed_rand(args.seed)
         model = MoCo(config)
         if config.HP_gpu:
             model.cuda()

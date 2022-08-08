@@ -5,13 +5,12 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.nn.modules.container import Sequential
 import torch.optim as optim
-import datetime
-from utils.config import Config
 import random, math
 from typing import List
-import math
 import json
 from torch.autograd import Variable
+
+DEVICE = (torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu'))
 
 def unique(x, dim=None):
     """Unique elements of x and indices of those unique elements
@@ -50,7 +49,9 @@ class HMLC(nn.Module):
             self.layer_penalty = layer_penalty
         self.sup_con_loss = SupConLoss(temperature)
         self.loss_type = loss_type
-        self.loss_item = [1, 0.0001, 0.000001]
+        # self.loss_item = [1, 0.0001, 0.000001]
+        self.loss_item = layer_penalty
+
     def pow_2(self, value):
         return torch.pow(2, value)
 
@@ -58,26 +59,35 @@ class HMLC(nn.Module):
         return torch.tensor(self.loss_item[index - 1])
 
     def forward(self, features, labels, features_queue, labels_queue):
-        device = torch.device('cuda')
-        mask = torch.ones(labels.shape).to(device)
-        mask_queue = torch.ones(labels_queue.shape).to(device)
-        
-        cumulative_loss = torch.tensor(0.0).to(device)
-        max_loss_lower_layer = torch.tensor(float('-inf'))
-        for l in range(1,labels.shape[1]):
-            mask[:, labels.shape[1]-l:] = 0
-            layer_labels = labels * mask
+        """
+           features: [bsz, hidden_dim]
+           labels: [bsz, 4]
+           featues_queue: [queue_size, hidden_dim]
+           labels_queue: [queue_size, 4]
+        """
+        mask = torch.ones(labels.shape).to(DEVICE) #[bsz, 4]
+        mask_queue = torch.ones(labels_queue.shape).to(DEVICE) #[queue_size, 4]
 
+        cumulative_loss = torch.tensor(0.0).to(DEVICE)
+        max_loss_lower_layer = torch.tensor(float('-inf'))
+
+        for l in range(1, labels.shape[1]): # l=1,2,3
+            mask[:, labels.shape[1]-l:] = 0
+            # print("mask:", mask)
+            layer_labels = labels * mask
             mask_queue[:, labels.shape[1]-l:] = 0
             layer_labels_queue = labels_queue * mask_queue
-
             mask_labels = torch.stack([torch.all(torch.eq(layer_labels[i], layer_labels_queue), dim=1)
-                                       for i in range(layer_labels.shape[0])]).type(torch.uint8).to(device)
+                                       for i in range(layer_labels.shape[0])]).type(torch.uint8).to(DEVICE)
             layer_loss = self.sup_con_loss(features, features_queue, mask=mask_labels)
+
             if self.loss_type == 'hmc':
                 # cumulative_loss += self.layer_penalty(torch.tensor(
                 #   1/(l)).type(torch.float)) * layer_loss
                 cumulative_loss += self.get_penal(l).cuda() * layer_loss
+                # print("layer:", l)
+                # print("layer loss:", layer_loss.item())
+                # print("weighted layer loss:", self.get_penal(l).cuda() * layer_loss.item())
             elif self.loss_type == 'hce':
                 layer_loss = torch.max(max_loss_lower_layer.to(layer_loss.device), layer_loss)
                 cumulative_loss += layer_loss
@@ -87,9 +97,11 @@ class HMLC(nn.Module):
                     1/l).type(torch.float)) * layer_loss
             else:
                 raise NotImplementedError('Unknown loss')
+            
             _, unique_indices = unique(layer_labels, dim=0)
-            max_loss_lower_layer = torch.max(
-                max_loss_lower_layer.to(layer_loss.device), layer_loss)
+
+            max_loss_lower_layer = torch.max(max_loss_lower_layer.to(layer_loss.device), layer_loss)
+
             labels = labels[unique_indices]
             mask = mask[unique_indices]
             features = features[unique_indices]
@@ -99,7 +111,10 @@ class HMLC(nn.Module):
             mask_queue = mask_queue[~tmp]
             features_queue = features_queue[~tmp]
 
-        return cumulative_loss / labels.shape[1] 
+        # print("labels size:", labels.shape[1])
+        # print("cumulative loss:", cumulative_loss.item())
+        # return cumulative_loss / labels.shape[1]
+        return cumulative_loss
 
 class MLP(nn.Module):
     """One hidden layer perceptron, with normalization."""
@@ -160,13 +175,8 @@ class SupConLoss(nn.Module):
         Returns:
             A loss scalar.
         """
-        device = (torch.device('cuda') if features.is_cuda else torch.device('cpu'))
-
-
         batch_size = features.shape[0]
-        mask = mask.float().to(device)
-
-    
+        mask = mask.float().to(DEVICE)
         anchor_dot_contrast = torch.div(
             torch.matmul(features, features_queue.T),
             self.temperature)
@@ -267,6 +277,7 @@ class NeurJudge(nn.Module):
         self.accu_loss = torch.nn.NLLLoss()
         self.law_loss = torch.nn.NLLLoss()
         self.term_loss = torch.nn.NLLLoss()
+
     def graph_decomposition_operation(self,_label,label_sim,id2label,label2id,num_label,layers=2):
         for i in range(layers):
             new_label_tong = []
@@ -334,12 +345,11 @@ class NeurJudge(nn.Module):
         # Fact Separation for verdicts
         adc_vector, sec_vector = self.fact_separation(process = process,verdict_names = charge_names,device = device ,embs = self.embs,encoder = self.encoder, circumstance = d_hidden, mask_attention = self.mask_attention,types = 'charge')
 
-
         # the article prediction
-        fact_article = torch.cat([d_hidden, adc_vector],-1)
+        fact_article = torch.cat([d_hidden, adc_vector],-1) #[bsz, seq_len, 4*hidden_dim] -> [bsz, 4*hidden_dim]
         fact_legal_article_hidden,_ = self.encoder_article(fact_article)
-
         fact_article_hidden = fact_legal_article_hidden.mean(1)
+
         article_out = self.article_pred(fact_article_hidden)
         law_log_softmax = F.log_softmax(article_out, dim=-1)
         law_loss = self.law_loss(law_log_softmax, law_labels)
@@ -348,7 +358,6 @@ class NeurJudge(nn.Module):
         article_names = [self.id2article[str(i)] for i in article_pred]
         # Fact Separation for sentencing
         ssc_vector, dsc_vector = self.fact_separation(process = process,verdict_names = article_names,device = device ,embs = self.embs,encoder = self.encoder, circumstance = sec_vector, mask_attention = self.mask_attention,types = 'article')
-
 
         # the term of penalty prediction change here
         # term_message = torch.cat([ssc_vector,dsc_vector],-1)
@@ -522,7 +531,7 @@ class NeurJudge_plus(nn.Module):
 
 
 class MoCo(nn.Module):
-    def __init__(self, config, dim=512):
+    def __init__(self, config):
         super(MoCo, self).__init__()
 
         self.K = config.moco_queue_size
@@ -536,13 +545,13 @@ class MoCo(nn.Module):
         self.confused_matrix = config.confused_matrix #[119, 119]
         
         #定义hmce loss 对象
-        self.hmce_loss = HMLC(loss_type="hmc")
+        self.hmce_loss = HMLC(layer_penalty=config.penalty, loss_type="hmc")
 
         for param_q, param_k in zip(self.encoder_q.parameters(), self.encoder_k.parameters()):
             param_k.data.copy_(param_q.data)  # initialize
             param_k.requires_grad = False  # not update by gradient
 
-        self.register_buffer("accu_feature_queue", torch.randn(self.K, 300))
+        self.register_buffer("accu_feature_queue", torch.randn(self.K, 2*config.HP_hidden_dim))
         self.accu_feature_queue = nn.functional.normalize(self.accu_feature_queue.cuda(), dim=1)
         
         self.register_buffer("label_queue", torch.randint(-1, 0, (self.K, 4)))
