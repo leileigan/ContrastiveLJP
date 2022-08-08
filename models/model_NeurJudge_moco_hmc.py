@@ -33,8 +33,11 @@ def unique(x, dim=None):
         x, sorted=True, return_inverse=True, dim=dim)
     perm = torch.arange(inverse.size(0), dtype=inverse.dtype,
                         device=inverse.device)
-    inverse, perm = inverse.flip([0]), perm.flip([0])
-    return unique, inverse.new_empty(unique.size(0)).scatter_(0, inverse, perm)
+    
+    indices = inverse.new_empty(unique.size(dim))
+    for i, ix in enumerate(inverse):
+        indices[ix] = perm[i]
+    return unique, indices
 
 
 class HMLC(nn.Module):
@@ -73,12 +76,17 @@ class HMLC(nn.Module):
 
         for l in range(1, labels.shape[1]): # l=1,2,3
             mask[:, labels.shape[1]-l:] = 0
+            # print("layer:", l)
             # print("mask:", mask)
-            layer_labels = labels * mask
-            mask_queue[:, labels.shape[1]-l:] = 0
+            layer_labels = labels * mask #[bsz, 4]
+            # print("laber labels size:", layer_labels.size()) 
+            mask_queue[:, labels.shape[1]-l:] = 0 #[bsz, 65536]
+            # print("mask queue size:", mask_queue.size())
             layer_labels_queue = labels_queue * mask_queue
             mask_labels = torch.stack([torch.all(torch.eq(layer_labels[i], layer_labels_queue), dim=1)
                                        for i in range(layer_labels.shape[0])]).type(torch.uint8).to(DEVICE)
+            # print("mask labels size:", mask_labels.size())
+
             layer_loss = self.sup_con_loss(features, features_queue, mask=mask_labels)
 
             if self.loss_type == 'hmc':
@@ -110,11 +118,10 @@ class HMLC(nn.Module):
             labels_queue = labels_queue[~tmp]
             mask_queue = mask_queue[~tmp]
             features_queue = features_queue[~tmp]
+        
 
-        # print("labels size:", labels.shape[1])
-        # print("cumulative loss:", cumulative_loss.item())
-        # return cumulative_loss / labels.shape[1]
         return cumulative_loss
+
 
 class MLP(nn.Module):
     """One hidden layer perceptron, with normalization."""
