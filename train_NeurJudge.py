@@ -278,11 +278,18 @@ def load_data_setting(save_file):
     data.show_data_summary()
     return data
 
+confusing_accu_labels = [1, 3, 5, 6, 11, 12, 15, 18, 22, 24, 25, 26, 27, 30, 33, 38, 42, 44, 45, 48, 54, 55, 61, 68, 69, 74, 77, 78, 79, 82, 86, 91, 93, 100, 105, 108, 110, 111, 112, 113, 118]
+num_accu_labels = [83, 11, 55, 16, 37, 102, 52, 107, 61, 12, 58, 75, 78, 38, 69, 60, 54, 94, 110, 88, 19, 30, 59, 26, 51, 118, 86, 49, 7] # number sensitive classes
+
 def get_result(accu_target, accu_preds, law_target, law_preds, term_target, term_preds, mode):
 
     accu_macro_f1 = f1_score(accu_target, accu_preds, average="macro")
     accu_macro_precision = precision_score(accu_target, accu_preds, average="macro")
     accu_macro_recall = recall_score(accu_target, accu_preds, average="macro")
+
+    confu_accu_macro_f1 = f1_score(accu_target, accu_preds, average="macro", labels=confusing_accu_labels)
+    confu_accu_macro_precision = precision_score(accu_target, accu_preds, average="macro", labels=confusing_accu_labels)
+    confu_accu_macro_recall = recall_score(accu_target, accu_preds, average="macro", labels=confusing_accu_labels)
 
     law_macro_f1 = f1_score(law_target, law_preds, average="macro")
     law_macro_precision = precision_score(law_target, law_preds, average="macro")
@@ -299,7 +306,8 @@ def get_result(accu_target, accu_preds, law_target, law_preds, term_target, term
     print("Accu task: macro_f1:%.4f, macro_precision:%.4f, macro_recall:%.4f" % (accu_macro_f1, accu_macro_precision, accu_macro_recall))
     print("Law task: macro_f1:%.4f, macro_precision:%.4f, macro_recall:%.4f" % (law_macro_f1, law_macro_precision, law_macro_recall))
     print("Term task: macro_f1:%.4f, macro_precision:%.4f, macro_recall:%.4f" % (term_macro_f1, term_macro_precision, term_macro_recall))
-
+    
+    print("Confusing Accu task: macro_f1:%.4f, macro_precision:%.4f, macro_recall:%.4f" % (confu_accu_macro_f1, confu_accu_macro_precision, confu_accu_macro_recall))
     return (accu_macro_f1 + law_macro_f1 + term_macro_f1)
     # return accu_macro_f1
 
@@ -334,6 +342,7 @@ def evaluate(model, valid_dataloader, process, name, epoch_idx):
     law_accuracy = accuracy_score(ground_law_y, predicts_law_y)
     term_accuracy = accuracy_score(ground_term_y, predicts_term_y)
     confused_matrix_accu = confusion_matrix(ground_accu_y, predicts_accu_y)
+
     # confused_matrix_law = confusion_matrix(ground_law_y, predicts_law_y)
     # confused_matrix_term = confusion_matrix(ground_term_y, predicts_term_y)
     print("Accu task accuracy: %.4f, Law task accuracy: %.4f, Term task accuracy: %.4f" % (accu_accuracy, law_accuracy, term_accuracy)) 
@@ -345,8 +354,7 @@ def evaluate(model, valid_dataloader, process, name, epoch_idx):
     score = get_result(ground_accu_y, predicts_accu_y, ground_law_y, predicts_law_y, ground_term_y, predicts_term_y, name)
     abs_score_lists, accu_s_lists = [], []
     target_classes =  list(range(119))
-    num_target_classes = [83, 11, 55, 16, 37, 102, 52, 107, 61, 12, 58, 75, 78, 38, 69, 60, 54, 94, 110, 88, 19, 30, 59, 26, 51, 118, 86, 49, 7] # number sensitive classes
-
+    
     # num_target_classes = [54, 86]
 
     g_t_lists, p_t_lists = [], []
@@ -356,7 +364,7 @@ def evaluate(model, valid_dataloader, process, name, epoch_idx):
             g_t_lists.append(g_t)
             p_t_lists.append(p_t)
 
-        if g_y in num_target_classes:
+        if g_y in num_accu_labels:
             num_g_t_lists.append(g_t)
             num_p_t_lists.append(p_t)
     

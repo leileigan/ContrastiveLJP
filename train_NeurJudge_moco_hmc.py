@@ -31,6 +31,24 @@ import numpy as np
 os.chdir('/data/ganleilei/workspace/ContrastiveLJP')
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+def load_model(model_dir, config, gpu):
+    config.HP_gpu = gpu
+    print("Load Model from file: ", model_dir)
+    model = MoCo(config)
+    print(model)
+    if config.HP_gpu:
+        model = model.cuda()
+    ## load model need consider if the model trained in GPU and load in CPU, or vice versa
+    # if not gpu:
+    #     model.load_state_dict(torch.load(model_dir), map_location=lambda storage, loc: storage)
+    #     # model = torch.load(model_dir, map_location=lambda storage, loc: storage)
+    # else:
+    model.load_state_dict(torch.load(model_dir))
+    # model = torch.load(model_dir)
+
+    return model
+
+
 def seed_rand(SEED_NUM):
     torch.manual_seed(SEED_NUM)
     random.seed(SEED_NUM)
@@ -239,10 +257,16 @@ def load_data_setting(save_file):
     data.show_data_summary()
     return data
 
+confusing_accu_labels = [1, 3, 5, 6, 11, 12, 15, 18, 22, 24, 25, 26, 27, 30, 33, 38, 42, 44, 45, 48, 54, 55, 61, 68, 69, 74, 77, 78, 79, 82, 86, 91, 93, 100, 105, 108, 110, 111, 112, 113, 118]
+num_accu_labels = [83, 11, 55, 16, 37, 102, 52, 107, 61, 12, 58, 75, 78, 38, 69, 60, 54, 94, 110, 88, 19, 30, 59, 26, 51, 118, 86, 49, 7] # number sensitive classes
 def get_result(accu_target, accu_preds, law_target, law_preds, term_target, term_preds, mode):
     accu_macro_f1 = f1_score(accu_target, accu_preds, average="macro")
     accu_macro_precision = precision_score(accu_target, accu_preds, average="macro")
     accu_macro_recall = recall_score(accu_target, accu_preds, average="macro")
+
+    confu_accu_macro_f1 = f1_score(accu_target, accu_preds, average="macro", labels=confusing_accu_labels)
+    confu_accu_macro_precision = precision_score(accu_target, accu_preds, average="macro", labels=confusing_accu_labels)
+    confu_accu_macro_recall = recall_score(accu_target, accu_preds, average="macro", labels=confusing_accu_labels)
 
     law_macro_f1 = f1_score(law_target, law_preds, average="macro")
     law_macro_precision = precision_score(law_target, law_preds, average="macro")
@@ -255,6 +279,7 @@ def get_result(accu_target, accu_preds, law_target, law_preds, term_target, term
     print("Accu task: macro_f1:%.4f, macro_precision:%.4f, macro_recall:%.4f" % (accu_macro_f1, accu_macro_precision, accu_macro_recall))
     print("Law task: macro_f1:%.4f, macro_precision:%.4f, macro_recall:%.4f" % (law_macro_f1, law_macro_precision, law_macro_recall))
     print("Term task: macro_f1:%.4f, macro_precision:%.4f, macro_recall:%.4f" % (term_macro_f1, term_macro_precision, term_macro_recall))
+    print("Confusing Accu task: macro_f1:%.4f, macro_precision:%.4f, macro_recall:%.4f" % (confu_accu_macro_f1, confu_accu_macro_precision, confu_accu_macro_recall))
 
     return accu_macro_f1 + law_macro_f1 + term_macro_f1
     # return accu_macro_f1
@@ -288,6 +313,7 @@ def evaluate(model, valid_dataloader, process, name, epoch_idx):
     law_accuracy = accuracy_score(ground_law_y, predicts_law_y)
     term_accuracy = accuracy_score(ground_term_y, predicts_term_y)
     confused_matrix_accu = confusion_matrix(ground_accu_y, predicts_accu_y)
+
     # confused_matrix_law = confusion_matrix(ground_law_y, predicts_law_y)
     # confused_matrix_term = confusion_matrix(ground_term_y, predicts_term_y)
     print("Accu task accuracy: %.4f, Law task accuracy: %.4f, Term task accuracy: %.4f" % (accu_accuracy, law_accuracy, term_accuracy)) 
@@ -496,6 +522,7 @@ if __name__ == '__main__':
         config.HP_lr_decay = args.HP_lr_decay
         config.save_model_dir = args.savemodel
         config.HP_freeze_word_emb = args.HP_freeze_word_emb
+        config.save_model_dir = os.path.join(args.savemodel, f"{args.seed}")
         if not os.path.exists(config.save_model_dir):
             os.mkdir(config.save_model_dir)
         config.use_warmup_adam = str2bool(args.use_warmup_adam)
@@ -545,8 +572,24 @@ if __name__ == '__main__':
         train(model, data_dict, config)
 
     elif status == 'test':
-        if os.path.exists(args.loadmodel) is False or os.path.exists(args.savedset) is False:
-            print('File path does not exit: %s and %s' % (args.loadmodel, args.savedset))
+        if os.path.exists(args.loadmodel) is False:
+            print('File path does not exit: %s and %s' % args.loadmodel)
             exit(1)
 
-        config = load_data_setting(args.savedset)
+        print("\nLoading data...")
+        savedset_path = os.path.join(args.loadmodel, "data.dset")
+        config = load_data_setting(savedset_path)
+        config.HP_hidden_dim = args.HP_hidden_dim
+        tokenizer = AutoTokenizer.from_pretrained(args.bert_path)
+        train_data, valid_data, test_data = load_dataset(args.data_path)
+        train_dataset = NeurJudgeDataset(train_data, tokenizer, config.MAX_SENTENCE_LENGTH, config.id2word_dict)
+        valid_dataset = NeurJudgeDataset(valid_data, tokenizer, config.MAX_SENTENCE_LENGTH, config.id2word_dict)
+        test_dataset = NeurJudgeDataset(test_data, tokenizer, config.MAX_SENTENCE_LENGTH, config.id2word_dict)
+
+        train_dataloader = DataLoader(train_dataset, batch_size=config.HP_batch_size, shuffle=False, collate_fn=collate_neur_judge_fn)
+        valid_dataloader = DataLoader(valid_dataset, batch_size=config.HP_batch_size, shuffle=False, collate_fn=collate_neur_judge_fn)
+        test_dataloader = DataLoader(test_dataset, batch_size=config.HP_batch_size, shuffle=False, collate_fn=collate_neur_judge_fn)
+        model_path = os.path.join(args.loadmodel, "best.ckpt")
+        model = load_model(model_path, config, True)
+        process = Data_Process()
+        score = evaluate(model, test_dataloader, process, "Test", -1)
