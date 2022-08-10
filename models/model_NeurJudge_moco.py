@@ -432,10 +432,11 @@ class MoCo(nn.Module):
             label_1_index = -1
         accu_label_lists = accu_label_lists.unsqueeze(1)
         law_label_lists = law_label_lists.unsqueeze(1)
+        term_label_lists = term_label_lists.unsqueeze(1)
         # [bsz, queue_size]
         accu_mask = torch.eq(accu_label_lists, self.accu_label_queue.T).float()
         law_mask = torch.eq(law_label_lists, self.law_label_queue.T).float()
-        term_mask = torch.eq(law_label_lists, self.law_label_queue.T).float()
+        term_mask = torch.eq(term_label_lists, self.term_label_queue.T).float()
         positive_mask = accu_mask * law_mask * term_mask
 
         query_queue_product = torch.einsum('nc,kc->nk', [query, self.accu_feature_queue.clone().detach()])
