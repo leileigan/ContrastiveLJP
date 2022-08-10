@@ -444,18 +444,14 @@ class MoCo(nn.Module):
             1), torch.norm(self.accu_feature_queue.clone().detach(), dim=1).unsqueeze(1)])
         cos_sim_with_t = cos_sim / self.T
 
-        neg_accu_mask = torch.ne(accu_label_lists, self.accu_label_queue.T).float()  # [bsz, queue_size]
-        # neg_law_mask = torch.ne(law_label_lists, self.law_label_queue.T).float()  # [bsz, queue_size]
-        # neg_term_mask = torch.ne(law_label_lists, self.law_label_queue.T).float()  # [bsz, queue_size]
-        neg_mask = neg_accu_mask  # 罪名不同或者法律条文不同 or 只考虑罪名?
+         # for numerical stability
+        logits_max, _ = torch.max(cos_sim_with_t, dim=1, keepdim=True)
+        logits = cos_sim_with_t - logits_max.detach()
+        # compute log_prob
+        exp_logits = torch.exp(logits + 1e-12)
+        log_prob = logits - torch.log(exp_logits.sum(1, keepdim=True))
 
-        neg_sim_sum = (torch.exp(cos_sim_with_t) *neg_mask).sum(1, keepdim=True)  # [bsz, 1]
-        # positive_sim: [bsz, queue_size] #样本和队列里每个正样本的乘积
-        positive_sim = torch.exp(cos_sim_with_t)  # [bsz, queue_size]
-        # sim_sum:  [bsz, queue_size]
-        exp_logits = neg_sim_sum + positive_sim
-        log_exp_logits = torch.log(exp_logits + 1e-12)
-        log_prob = cos_sim_with_t - log_exp_logits  # [bsz, queue_size]
+        # compute mean of log-likelihood over positive
         mean_log_prob_pos = (positive_mask * log_prob).sum(1) / \
             (positive_mask.sum(1) + 1e-12)  # [bsz]
 
