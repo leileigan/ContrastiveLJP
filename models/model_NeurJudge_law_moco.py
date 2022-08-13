@@ -184,7 +184,7 @@ class NeurJudge(nn.Module):
         term_loss = self.term_loss(term_log_softmax, term_labels)
         _, term_predicts = torch.max(term_log_softmax, dim=1) # [batch_size * max_claims_num]
 
-        return accu_predicts, law_predicts, term_predicts, accu_loss, law_loss, term_loss, df
+        return accu_predicts, law_predicts, term_predicts, accu_loss, law_loss, term_loss, fact_article_hidden
  
 class NeurJudge_plus(nn.Module):
     def __init__(self,embedding):
