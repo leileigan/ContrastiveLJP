@@ -363,7 +363,7 @@ class MoCo(nn.Module):
             param_k.requires_grad = False  # not update by gradient
 
         # create the queue
-        self.register_buffer("accu_feature_queue", torch.randn(self.K, 2*config.HP_hidden_dim))
+        self.register_buffer("accu_feature_queue", torch.randn(self.K, 4*config.HP_hidden_dim))
         self.accu_feature_queue = nn.functional.normalize(self.accu_feature_queue.cuda(), dim=1)
 
         self.register_buffer("accu_label_queue", torch.randint(-1, 0, (self.K, 1)))
