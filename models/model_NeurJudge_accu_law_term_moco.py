@@ -184,7 +184,7 @@ class NeurJudge(nn.Module):
         term_loss = self.term_loss(term_log_softmax, term_labels)
         _, term_predicts = torch.max(term_log_softmax, dim=1) # [batch_size * max_claims_num]
 
-        return accu_predicts, law_predicts, term_predicts, accu_loss, law_loss, term_loss, df
+        return accu_predicts, law_predicts, term_predicts, accu_loss, law_loss, term_loss, fact_legal_time_hidden
  
 class NeurJudge_plus(nn.Module):
     def __init__(self,embedding):
@@ -363,7 +363,7 @@ class MoCo(nn.Module):
             param_k.requires_grad = False  # not update by gradient
 
         # create the queue
-        self.register_buffer("accu_feature_queue", torch.randn(self.K, 2*config.HP_hidden_dim))
+        self.register_buffer("accu_feature_queue", torch.randn(self.K, 6*config.HP_hidden_dim))
         self.accu_feature_queue = nn.functional.normalize(self.accu_feature_queue.cuda(), dim=1)
 
         self.register_buffer("accu_label_queue", torch.randint(-1, 0, (self.K, 1)))
@@ -439,10 +439,11 @@ class MoCo(nn.Module):
         term_mask = torch.eq(term_label_lists, self.term_label_queue.T).float()
         positive_mask = accu_mask * law_mask * term_mask
 
-        query_queue_product = torch.einsum('nc,kc->nk', [query, self.accu_feature_queue.clone().detach()])
-        cos_sim = query_queue_product / torch.einsum('nc,kc->nk', [torch.norm(query, dim=1).unsqueeze(
-            1), torch.norm(self.accu_feature_queue.clone().detach(), dim=1).unsqueeze(1)])
-        cos_sim_with_t = cos_sim / self.T
+        # query_queue_product = torch.einsum('nc,kc->nk', [query, self.accu_feature_queue.clone().detach()])
+        # cos_sim = query_queue_product / torch.einsum('nc,kc->nk', [torch.norm(query, dim=1).unsqueeze(
+            # 1), torch.norm(self.accu_feature_queue.clone().detach(), dim=1).unsqueeze(1)])
+        # cos_sim_with_t = cos_sim / self.T
+        cos_sim_with_t = torch.div(torch.matmul(query, self.accu_feature_queue.clone().detach().T), self.T)
 
          # for numerical stability
         logits_max, _ = torch.max(cos_sim_with_t, dim=1, keepdim=True)
