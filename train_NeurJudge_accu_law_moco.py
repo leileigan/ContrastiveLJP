@@ -18,7 +18,7 @@ from sklearn.metrics import (accuracy_score, classification_report, f1_score,
 from torch import optim
 from torch.utils.data.dataloader import DataLoader
 from torch.utils.data.dataset import Dataset
-from models.model_NeurJudge_moco import MoCo
+from models.model_NeurJudge_accu_law_moco import MoCo
 from utils.optim import ScheduledOptim
 from transformers import AutoTokenizer
 
@@ -106,7 +106,8 @@ class Config:
         self.moco_temperature = 0.07
         self.moco_queue_size = 65536
         self.moco_momentum = 0.999
-        self.alpha = 0.1
+        self.alpha1 = 10
+        self.alpha2 = 10
         self.warm_epoch = 0
         self.confused_matrix = None
         self.moco_hard_queue_size = 3000
@@ -140,7 +141,8 @@ class Config:
         print("     Temperature         :  %s" % (self.moco_temperature))
         print("     Momentum            :  %s" % (self.moco_momentum))
         print("     Queue size          :  %s" % (self.moco_queue_size))
-        print("     Alpha               :  %s" % (self.alpha))
+        print("     Alpha               :  %s" % (self.alpha1))
+        print("     Beta                :  %s" % (self.alpha2))
         print("     Hard queue size     :  %s" % (self.moco_hard_queue_size))
 
         print("DATA SUMMARY END.")
@@ -394,17 +396,17 @@ def train(model, dataset, config: Config):
 
         for batch_idx, datapoint in enumerate(train_dataloader):
             documents, _, accu_label_lists, law_label_lists, term_lists = datapoint
-            contra_loss, accu_loss, law_loss, term_loss, accu_preds, law_preds, term_preds = \
+            contra_accu_loss, contra_law_loss, accu_loss, law_loss, term_loss, accu_preds, law_preds, term_preds = \
                 model.forward(legals,legals_len,arts,arts_sent_lent, \
                 charge_tong2id,id2charge_tong,art2id,id2art,documents, \
                 config.MAX_SENTENCE_LENGTH,process, DEVICE, accu_label_lists, law_label_lists, term_lists)
 
-            loss = accu_loss + term_loss + law_loss + config.alpha * contra_loss
+            loss = accu_loss + term_loss + law_loss + config.alpha1 * contra_accu_loss + config.alpha2 * contra_law_loss
             sample_loss += loss.data
             sample_accu_loss += accu_loss.data
             sample_law_loss += law_loss.data
             sample_term_loss += term_loss.data
-            sample_contra_loss += contra_loss.data
+            sample_contra_loss += contra_accu_loss.data + contra_law_loss
 
             ground_accu_y.extend(accu_label_lists.tolist())
             ground_law_y.extend(law_label_lists.tolist())
@@ -475,7 +477,9 @@ if __name__ == '__main__':
 
     parser.add_argument('--use_warmup_adam', default='False')
     parser.add_argument('--use_adam', default='True')
-    parser.add_argument('--alpha', default=0.1, type=float)
+    parser.add_argument('--alpha', default=10, type=float)
+    parser.add_argument('--beta', default=10, type=float)
+
     parser.add_argument('--warm_epoch', default=0, type=int)
     parser.add_argument('--seed', default=2022, type=int)
     parser.add_argument('--bert_path', type=str)
@@ -514,7 +518,8 @@ if __name__ == '__main__':
         config.moco_queue_size = args.moco_queue_size
         config.moco_momentum = args.moco_momentum
         config.warm_epoch = args.warm_epoch
-        config.alpha = args.alpha
+        config.alpha1 = args.alpha
+        config.alpha2 = args.beta
         config.word2id_dict = pickle.load(open(args.word2id_dict, 'rb'))
         config.id2word_dict = {item[1]: item[0] for item in config.word2id_dict.items()}
         config.bert_path = args.bert_path

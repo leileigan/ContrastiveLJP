@@ -184,7 +184,7 @@ class NeurJudge(nn.Module):
         term_loss = self.term_loss(term_log_softmax, term_labels)
         _, term_predicts = torch.max(term_log_softmax, dim=1) # [batch_size * max_claims_num]
 
-        return accu_predicts, law_predicts, term_predicts, accu_loss, law_loss, term_loss, df
+        return accu_predicts, law_predicts, term_predicts, accu_loss, law_loss, term_loss, df, fact_article_hidden
  
 class NeurJudge_plus(nn.Module):
     def __init__(self,embedding):
@@ -364,7 +364,9 @@ class MoCo(nn.Module):
 
         # create the queue
         self.register_buffer("accu_feature_queue", torch.randn(self.K, 2*config.HP_hidden_dim))
+        self.register_buffer("law_feature_queue", torch.randn(self.K, 4*config.HP_hidden_dim))
         self.accu_feature_queue = nn.functional.normalize(self.accu_feature_queue.cuda(), dim=1)
+        self.law_feature_queue = nn.functional.normalize(self.law_feature_queue.cuda(), dim=1)
 
         self.register_buffer("accu_label_queue", torch.randint(-1, 0, (self.K, 1)))
         self.accu_label_queue = self.accu_label_queue.cuda()
@@ -382,8 +384,8 @@ class MoCo(nn.Module):
             param_k.data = param_k.data * self.m + param_q.data * (1. - self.m)
 
     @torch.no_grad()
-    def _dequeue_and_enqueue(self, keys, accu_label_lists, law_label_lists, term_label_lists):
-        batch_size = keys.shape[0]
+    def _dequeue_and_enqueue(self, accu_keys, law_keys, accu_label_lists, law_label_lists, term_label_lists):
+        batch_size = accu_keys.shape[0]
         accu_label_keys = accu_label_lists.unsqueeze(1)
         law_label_keys = law_label_lists.unsqueeze(1)
         term_label_keys = term_label_lists.unsqueeze(1)
@@ -391,32 +393,42 @@ class MoCo(nn.Module):
         ptr = int(self.ptr)
         if ptr+batch_size > self.K:
             head_size = self.K - ptr
-            head_keys = keys[: head_size]
+            head_accu_keys = accu_keys[: head_size]
+            head_law_keys = law_keys[: head_size]
+
             head_accu_labels = accu_label_keys[: head_size]
             head_law_labels = law_label_keys[: head_size]
             head_term_labels = term_label_keys[: head_size]
 
             end_size = ptr + batch_size - self.K
-            end_keys = keys[head_size:]
+            end_accu_keys = accu_keys[head_size:]
+            end_law_keys = law_keys[head_size:]
+
             end_accu_labels = accu_label_keys[head_size:]
             end_law_labels = law_label_keys[head_size:]
             end_term_labels = term_label_keys[head_size:]
 
             # set head keys
-            self.accu_feature_queue[ptr:, :] = head_keys
+            self.accu_feature_queue[ptr:, :] = head_accu_keys
+            self.law_feature_queue[ptr:, :] = head_law_keys
+
             self.accu_label_queue[ptr:, :] = head_accu_labels
             self.law_label_queue[ptr:, :] = head_law_labels
             self.term_label_queue[ptr:, :] = head_term_labels
 
             # set tail keys
-            self.accu_feature_queue[:end_size, :] = end_keys
+            self.accu_feature_queue[:end_size, :] = end_accu_keys
+            self.law_feature_queue[:end_size, :] = end_law_keys
+
             self.accu_label_queue[:end_size, :] = end_accu_labels
             self.law_label_queue[:end_size, :] = end_law_labels
             self.term_label_queue[:end_size, :] = end_term_labels
 
         else:
             # replace the keys at ptr (dequeue and enqueue)
-            self.accu_feature_queue[ptr:ptr + batch_size, :] = keys
+            self.accu_feature_queue[ptr:ptr + batch_size, :] = accu_keys
+            self.law_feature_queue[ptr:ptr + batch_size, :] = law_keys
+
             self.accu_label_queue[ptr:ptr+batch_size, :] = accu_label_keys
             self.law_label_queue[ptr:ptr+batch_size, :] = law_label_keys
             self.term_label_queue[ptr:ptr+batch_size, :] = term_label_keys
@@ -424,7 +436,7 @@ class MoCo(nn.Module):
         ptr = (ptr + batch_size) % self.K  # move pointer
         self.ptr[0] = ptr
 
-    def _get_contra_loss(self, query, accu_label_lists, law_label_lists, term_label_lists):
+    def _get_contra_loss(self, accu_query, law_query, accu_label_lists, law_label_lists, term_label_lists):
         label_1_list = accu_label_lists.eq(1).nonzero(as_tuple=True)
         if label_1_list[0].size(0) > 0:
             label_1_index = label_1_list[0][0]
@@ -437,70 +449,71 @@ class MoCo(nn.Module):
         accu_mask = torch.eq(accu_label_lists, self.accu_label_queue.T).float()
         law_mask = torch.eq(law_label_lists, self.law_label_queue.T).float()
         term_mask = torch.eq(term_label_lists, self.term_label_queue.T).float()
-        positive_mask = accu_mask * law_mask
 
-        query_queue_product = torch.einsum('nc,kc->nk', [query, self.accu_feature_queue.clone().detach()])
-        cos_sim = query_queue_product / torch.einsum('nc,kc->nk', [torch.norm(query, dim=1).unsqueeze(
-            1), torch.norm(self.accu_feature_queue.clone().detach(), dim=1).unsqueeze(1)])
-        cos_sim_with_t = cos_sim / self.T
-
+        # compute accu contra loss
+        cos_sim_with_t = torch.div(torch.matmul(accu_query, self.accu_feature_queue.clone().detach().T), self.T)
          # for numerical stability
         logits_max, _ = torch.max(cos_sim_with_t, dim=1, keepdim=True)
         logits = cos_sim_with_t - logits_max.detach()
         # compute log_prob
         exp_logits = torch.exp(logits + 1e-12)
         log_prob = logits - torch.log(exp_logits.sum(1, keepdim=True))
-
         # compute mean of log-likelihood over positive
-        mean_log_prob_pos = (positive_mask * log_prob).sum(1) / \
-            (positive_mask.sum(1) + 1e-12)  # [bsz]
+        mean_log_prob_pos = (accu_mask * log_prob).sum(1) / \
+            (accu_mask.sum(1) + 1e-12)  # [bsz]
+        accu_loss = -mean_log_prob_pos.mean()
+        
+        # compute law contra loss
+        cos_sim_with_t = torch.div(torch.matmul(law_query, self.law_feature_queue.clone().detach().T), self.T)
+         # for numerical stability
+        logits_max, _ = torch.max(cos_sim_with_t, dim=1, keepdim=True)
+        logits = cos_sim_with_t - logits_max.detach()
+        # compute log_prob
+        exp_logits = torch.exp(logits + 1e-12)
+        log_prob = logits - torch.log(exp_logits.sum(1, keepdim=True))
+        # compute mean of log-likelihood over positive
+        mean_log_prob_pos = (law_mask * log_prob).sum(1) / \
+            (law_mask.sum(1) + 1e-12)  # [bsz]
+        law_loss = -mean_log_prob_pos.mean()
 
-        loss = -mean_log_prob_pos.mean()
-        # if label_1_index != -1:
-        #     # print("label queue:", self.label_queue.squeeze())
-        #     # print("positive mask:", mask[label_1_index])
-        #     # print("positive mask select value:", torch.masked_select(query_queue_product[label_1_index], mask[label_1_index].bool()))
-        #     print("positive cos sim select value:", torch.masked_select(cos_sim[label_1_index], mask[label_1_index].bool()))
-        #     # print("hard neg mask:", hard_neg_mask[label_1_index])
-        #     # print("hard neg mask select value:", torch.masked_select(query_queue_product[label_1_index], hard_neg_mask[label_1_index].bool()))
-        #     print("hard neg cos sim select value:", torch.masked_select(cos_sim[label_1_index], hard_neg_mask[label_1_index].bool()))
-        #     # print("query queue product:", query_queue_product[label_1_index])
-        return loss, label_1_index
+        return accu_loss, law_loss, label_1_index
 
     def forward(self, legals, legals_len, arts, arts_sent_lent,
                 charge_tong2id, id2charge_tong, art2id, id2art, documents,
                 sent_lent, process, device, accu_label_lists, law_label_lists, term_lists):
         # compute query features
-        accu_preds, law_preds, term_preds, accu_loss, law_loss, term_loss, q_accu_feature = self.encoder_q(
+        accu_preds, law_preds, term_preds, accu_loss, law_loss, term_loss, q_accu_feature, q_law_feature = self.encoder_q(
             legals, legals_len, arts,
             arts_sent_lent, charge_tong2id, id2charge_tong, art2id, id2art, documents, sent_lent, process, device,
             accu_label_lists, law_label_lists, term_lists)
         
         q_accu_feature = nn.functional.normalize(q_accu_feature, dim=1)
+        q_law_feature = nn.functional.normalize(q_law_feature, dim=1)
 
         with torch.no_grad():  # no gradient to keys
             self._momentum_update_key_encoder()  # update the key encoder
             # shuffle for making use of BN
             #im_k, idx_unshuffle = self._batch_shuffle_ddp(im_k)
-            _, _, _, _, _, _, k_accu_feature = self.encoder_q(legals, legals_len,
+            _, _, _, _, _, _, k_accu_feature, k_law_feature = self.encoder_q(legals, legals_len,
                                                               arts, arts_sent_lent, charge_tong2id, id2charge_tong, art2id, id2art, documents,
                                                               sent_lent, process, device, accu_label_lists, law_label_lists, term_lists)
             
             k_accu_feature = nn.functional.normalize(k_accu_feature, dim=1)
+            k_law_feature = nn.functional.normalize(k_law_feature, dim=1)
 
         # dequeue and enqueue
-        self._dequeue_and_enqueue(k_accu_feature, accu_label_lists, law_label_lists, term_lists)
-        contra_hmce_loss, _ = self._get_contra_loss(q_accu_feature, accu_label_lists, law_label_lists, term_lists)
+        self._dequeue_and_enqueue(k_accu_feature, k_law_feature, accu_label_lists, law_label_lists, term_lists)
+        contra_accu_loss, contra_law_loss, _ = self._get_contra_loss(q_accu_feature, q_law_feature, accu_label_lists, law_label_lists, term_lists)
 
         #return contra_loss, accu_loss, law_loss, term_loss, accu_preds, law_preds, term_preds
-        return contra_hmce_loss, accu_loss, law_loss, term_loss, accu_preds, law_preds, term_preds
+        return contra_accu_loss, contra_law_loss, accu_loss, law_loss, term_loss, accu_preds, law_preds, term_preds
     
     
     def predict(self, legals,legals_len,arts,arts_sent_lent, \
                 charge_tong2id,id2charge_tong,art2id,id2art,documents, \
                 sent_lent,process,device, accu_label_lists, law_label_lists, term_lists):
         # compute query features
-        accu_preds, law_preds, term_preds, _, _, _, _ = self.encoder_q(legals,legals_len,arts, \
+        accu_preds, law_preds, term_preds, _, _, _, _, _ = self.encoder_q(legals,legals_len,arts, \
             arts_sent_lent,charge_tong2id,id2charge_tong,art2id,id2art,documents,sent_lent,process,device, \
             accu_label_lists, law_label_lists, term_lists)
         
