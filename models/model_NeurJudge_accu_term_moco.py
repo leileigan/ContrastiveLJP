@@ -184,7 +184,7 @@ class NeurJudge(nn.Module):
         term_loss = self.term_loss(term_log_softmax, term_labels)
         _, term_predicts = torch.max(term_log_softmax, dim=1) # [batch_size * max_claims_num]
 
-        return accu_predicts, law_predicts, term_predicts, accu_loss, law_loss, term_loss, df
+        return accu_predicts, law_predicts, term_predicts, accu_loss, law_loss, term_loss, fact_legal_time_hidden
  
 class NeurJudge_plus(nn.Module):
     def __init__(self,embedding):
@@ -438,6 +438,7 @@ class MoCo(nn.Module):
         law_mask = torch.eq(law_label_lists, self.law_label_queue.T).float()
         term_mask = torch.eq(term_label_lists, self.term_label_queue.T).float()
         positive_mask = accu_mask * term_mask
+        # print("positive mask sum:", positive_mask.sum(1))
 
         cos_sim_with_t = torch.div(torch.matmul(query, self.accu_feature_queue.clone().detach().T), self.T)
         # for numerical stability
