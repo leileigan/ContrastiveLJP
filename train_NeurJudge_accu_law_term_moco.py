@@ -48,6 +48,7 @@ def load_model(model_dir, config, gpu):
     return model
 
 def seed_rand(SEED_NUM):
+    torch.random.manual_seed(SEED_NUM)
     torch.manual_seed(SEED_NUM)
     random.seed(SEED_NUM)
     np.random.seed(SEED_NUM)
