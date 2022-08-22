@@ -501,8 +501,8 @@ if __name__ == '__main__':
 
     parser.add_argument('--is_dice', default=1, type=int)
     parser.add_argument('--num_dice', default=10000, type=int)
-    parser.add_argument('--dice_model_path', default="/data/ganleilei/lbk/workspace/ContrastiveLJP_num/ContrastiveLJP/results/Dice/300000best.ckpt", type=str)
-    parser.add_argument('--dice_config_path', default="/data/ganleilei/lbk/workspace/ContrastiveLJP_num/ContrastiveLJP/results/Dice/300000data.dset", type=str)
+    parser.add_argument('--dice_model_path', default="/data/ganleilei/law/ContrastiveLJP/results/Dice/300000best.ckpt", type=str)
+    parser.add_argument('--dice_config_path', default="/data/ganleilei/law/ContrastiveLJP/results/Dice/300000data.dset", type=str)
     parser.add_argument('--is_frazeDice', default=False, type=bool)
 
     parser.add_argument('--law_relation_threshold', default=0.3)
