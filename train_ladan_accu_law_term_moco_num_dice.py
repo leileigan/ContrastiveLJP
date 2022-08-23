@@ -165,12 +165,25 @@ class Config:
 
 num2id_dict = {str(i):i for i in range(10)}
 num2id_dict["."] = 10
+# num_target_classes = [83, 11, 55, 16, 37, 102, 52, 107, 61, 12, 58, 75, 78, 38, 69, 60, 54, 94, 110, 88, 19, 30, 59, 26, 51, 118, 86, 49, 7] # number sensitive classes
+num_target_classes = range(120)
 class LADANDataset(Dataset):
 
     def __init__(self, data, tokenizer, max_len, id2word_dict):
         self.tokenizer = tokenizer
         self.max_len = max_len
-        self.data = data
+        filtered_data = {'fact_list':[], 'accu_label_lists':[], 'law_label_lists':[], 'term_lists': [], 'raw_fact_lists': [], 'money_amount_lists': [], 'drug_weight_lists':[]}
+        for index in range(len(data['fact_list'])):
+            if data['accu_label_lists'][index] not in num_target_classes: continue
+            filtered_data['fact_list'].append(data['fact_list'][index])
+            filtered_data['accu_label_lists'].append(data['accu_label_lists'][index])
+            filtered_data['law_label_lists'].append(data['law_label_lists'][index])
+            filtered_data['term_lists'].append(data['term_lists'][index])
+            filtered_data['raw_fact_lists'].append(data['raw_facts_list'][index])
+            filtered_data['money_amount_lists'].append(data['money_amount_lists'][index])
+            filtered_data['drug_weight_lists'].append(data['drug_weight_lists'][index])
+
+        self.data = filtered_data
         self.id2word_dict = id2word_dict
 
     def __len__(self):
@@ -326,8 +339,8 @@ def evaluate(model, valid_dataloader, name, epoch_idx):
     abs_score_lists, accu_s_lists = [], []
     # for i in range(119):
     target_classes = list(range(120))
-    num_target_classes = [83, 11, 55, 16, 37, 102, 52, 107, 61, 12, 58, 75, 78, 38, 69, 60, 54, 94, 110, 88, 19, 30, 59, 26, 51, 118, 86, 49, 7] # number sensitive classes
     # num_target_classes = [54, 86]
+    num_target_classes = [83, 11, 55, 16, 37, 102, 52, 107, 61, 12, 58, 75, 78, 38, 69, 60, 54, 94, 110, 88, 19, 30, 59, 26, 51, 118, 86, 49, 7] # number sensitive classes
     g_t_lists, p_t_lists = [], []
     num_g_t_lists, num_p_t_lists = [], []
     for g_y, p_y, g_t, p_t in zip(ground_accu_y, predicts_accu_y, ground_term_y, predicts_term_y):
