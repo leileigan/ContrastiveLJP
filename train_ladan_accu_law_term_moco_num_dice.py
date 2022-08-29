@@ -82,6 +82,7 @@ class Config:
         self.HP_bilstm = True
         self.HP_gpu = True
         self.HP_lr = 0.015
+        self.HP_dice_lr = 1e-4
         self.HP_lr_decay = 0.05
         self.HP_clip = 5.0
         self.HP_momentum = 0
@@ -384,8 +385,11 @@ def train(model, dataset, config: Config):
     test_data_set = dataset["test_data_set"]
     print("config batch size:", config.HP_batch_size)
     print("Training model...")
-    print(model)
-    parameters = filter(lambda p: p.requires_grad, model.parameters())
+    dice_parameters = filter(lambda p: p.requires_grad, model.encoder_q.dice_model.parameters())
+    dice_parameters_id = list(map(id, model.encoder_q.dice_model.parameters()))
+    # print("dice parameters id:", dice_parameters_id)
+    parameters = filter(lambda p: p.requires_grad and id(p) not in dice_parameters_id, model.parameters())
+    # print("parameters id:", list(map(id, parameters)))
 
     if config.use_warmup_adam:
         optimizer = ScheduledOptim(optim.Adam(parameters, betas=(0.9, 0.98), eps=1e-9), d_model=256, n_warmup_steps=2000)
@@ -393,6 +397,7 @@ def train(model, dataset, config: Config):
         optimizer = optim.SGD(parameters, lr=config.HP_lr, momentum=config.HP_momentum)
     elif config.use_adam:
         optimizer = optim.Adam(parameters, lr=config.HP_lr)
+        dice_optimizer = optim.Adam(dice_parameters, lr=config.HP_dice_lr)
     elif config.use_bert:
         optimizer = optim.Adam(parameters, lr=5e-6)  # fine tuning
     else:
@@ -458,6 +463,7 @@ def train(model, dataset, config: Config):
             # optimizer.step_and_update_lr()
             torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=config.HP_clip)
             optimizer.step()
+            dice_optimizer.step()
             model.zero_grad()
 
         sys.stdout.flush()
@@ -494,6 +500,7 @@ if __name__ == '__main__':
     parser.add_argument('--HP_lstmdropout', default=0.5, type=float)
     parser.add_argument('--HP_lstm_layer', default=1, type=int)
     parser.add_argument('--HP_lr', default=1e-3, type=float)
+    parser.add_argument('--HP_dice_lr', default=1e-4, type=float)
     parser.add_argument('--HP_lr_decay', default=0.05, type=float)
     parser.add_argument('--HP_freeze_word_emb', action='store_true')
 
@@ -536,6 +543,7 @@ if __name__ == '__main__':
         config.HP_dropout = args.HP_dropout
         config.HP_lstm_layer = args.HP_lstm_layer
         config.HP_lr = args.HP_lr
+        config.HP_dice_lr = args.HP_dice_lr
         config.MAX_SENTENCE_LENGTH = args.MAX_SENTENCE_LENGTH
         config.HP_lr_decay = args.HP_lr_decay
         config.save_model_dir = os.path.join(args.savemodel, f"alpha{args.alpha}_beta{args.beta}_gama{args.gama}", f"{args.seed}")
