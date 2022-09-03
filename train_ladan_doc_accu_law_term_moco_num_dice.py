@@ -535,7 +535,7 @@ if __name__ == '__main__':
         config.HP_dice_lr = args.HP_dice_lr
         config.MAX_SENTENCE_LENGTH = args.MAX_SENTENCE_LENGTH
         config.HP_lr_decay = args.HP_lr_decay
-        config.save_model_dir = os.path.join(args.savemodel, f"alpha{args.alpha}_beta{args.beta}_gama{args.gama}_theta{args.theta}", f"{args.seed}")
+        config.save_model_dir = os.path.join(args.savemodel, f"alpha{args.alpha}_beta{args.beta}_gama{args.gama}_theta{args.theta}_dicelr{args.HP_dice_lr}", f"{args.seed}")
         config.HP_freeze_word_emb = args.HP_freeze_word_emb
         if not os.path.exists(config.save_model_dir):
             os.makedirs(config.save_model_dir)
