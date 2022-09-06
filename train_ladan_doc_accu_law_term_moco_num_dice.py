@@ -376,8 +376,7 @@ def train(model, dataset, config: Config):
     print(model)
     dice_parameters = filter(lambda p: p.requires_grad, model.encoder_q.dice_model.parameters())
     dice_parameters_id = list(map(id, model.encoder_q.dice_model.parameters()))
-    # print("dice parameters id:", dice_parameters_id)
-    parameters = filter(lambda p: p.requires_grad, model.parameters())
+    parameters = filter(lambda p: p.requires_grad and id(p) not in dice_parameters_id, model.parameters())
 
     if config.use_warmup_adam:
         optimizer = ScheduledOptim(optim.Adam(parameters, betas=(0.9, 0.98), eps=1e-9), d_model=256, n_warmup_steps=2000)
@@ -390,7 +389,6 @@ def train(model, dataset, config: Config):
         optimizer = optim.Adam(parameters, lr=5e-6)  # fine tuning
     else:
         raise ValueError("Unknown optimizer")
-    print('optimizer: ', optimizer)
 
     best_dev = -1
     no_imporv_epoch = 0
