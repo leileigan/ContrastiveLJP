@@ -114,7 +114,7 @@ class Config:
         self.warm_epoch = 0
         self.confused_matrix = None
         self.moco_hard_queue_size = 3000
-        self.mlp = True
+        self.mlp_size = 512
 
         self.seed = 10
 
@@ -483,7 +483,7 @@ if __name__ == '__main__':
     parser.add_argument('--moco_queue_size', default=65536, type=int)
     parser.add_argument('--moco_momentum', default=0.999, type=float)
     parser.add_argument('--moco_temperature', default=0.07, type=float)
-    parser.add_argument('--mlp', action='store_true')
+    parser.add_argument('--mlp_size', default=512, type=int)
 
     parser.add_argument('--law_relation_threshold', default=0.3)
 
@@ -519,7 +519,7 @@ if __name__ == '__main__':
         config.alpha2 = args.beta
         config.alpha3 = args.gama
         config.alpha4 = args.theta
-        config.mlp = args.mlp
+        config.mlp_size = args.mlp_size
 
         config.word2id_dict = pickle.load(open(args.word2id_dict, 'rb'))
         config.id2word_dict = {item[1]: item[0] for item in config.word2id_dict.items()}
