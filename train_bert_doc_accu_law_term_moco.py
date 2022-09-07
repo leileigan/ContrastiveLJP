@@ -380,7 +380,6 @@ def train(model, dataset, config: Config):
         epoch_start = time.time()
         temp_start = epoch_start
         print("Epoch: %s/%s" % (idx, config.HP_iteration))
-        optimizer = lr_decay(optimizer, idx, config.HP_lr_decay, config.HP_lr)
         sample_loss, sample_accu_loss, sample_law_loss, sample_term_loss, sample_contra_loss = 0, 0, 0, 0, 0
 
         model.train()
@@ -534,6 +533,16 @@ if __name__ == '__main__':
         print("\nLoading data...")
         tokenizer = AutoTokenizer.from_pretrained(args.bert_path)
         train_data, valid_data, test_data = load_dataset(args.data_path)
+        if args.sample_size != 'all':
+            sample_size = int(args.sample_size)
+            sampled_train_data = {}
+            start = random.randint(0, len(train_data['fact_list'])-sample_size)
+            print("start:", start)
+            for k, v in train_data.items():
+                sampled_train_data[k] = train_data[k][start:start+sample_size]
+
+            train_data = sampled_train_data
+
         train_dataset = BERTDataset(train_data, tokenizer, config.MAX_SENTENCE_LENGTH, config.id2word_dict)
         valid_dataset = BERTDataset(valid_data, tokenizer, config.MAX_SENTENCE_LENGTH, config.id2word_dict)
         test_dataset = BERTDataset(test_data, tokenizer, config.MAX_SENTENCE_LENGTH, config.id2word_dict)
