@@ -401,6 +401,7 @@ def train(model, data_dict, config: Config):
     else:
         raise ValueError("Unknown optimizer")
     print('optimizer: ', optimizer)
+    print("dice optimizer:", dice_optimizer)
 
     best_dev = -1
     no_imporv_epoch = 0
@@ -409,7 +410,6 @@ def train(model, data_dict, config: Config):
         epoch_start = time.time()
         temp_start = epoch_start
         print("Epoch: %s/%s" % (idx, config.HP_iteration))
-        optimizer = lr_decay(optimizer, idx, config.HP_lr_decay, config.HP_lr)
         sample_loss, sample_accu_loss, sample_law_loss, sample_term_loss, sample_contra_loss = 0, 0, 0, 0, 0
 
         model.train()
