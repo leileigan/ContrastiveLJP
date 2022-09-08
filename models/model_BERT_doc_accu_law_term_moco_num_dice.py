@@ -46,7 +46,7 @@ class LawModel(nn.Module):
         self.term_classifier = torch.nn.Sequential(
             torch.nn.Linear(self.bert_config.hidden_size, config.mlp_size),
             torch.nn.ReLU(),
-            torch.nn.Linear(cofig.mlp_size + 512, config.mlp_size),
+            torch.nn.Linear(config.mlp_size + 512, config.mlp_size),
             torch.nn.ReLU(),
             torch.nn.Linear(cofnig.mlp_size, config.term_label_size)
         )
