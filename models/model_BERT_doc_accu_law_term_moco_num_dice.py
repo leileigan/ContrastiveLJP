@@ -48,7 +48,7 @@ class LawModel(nn.Module):
             torch.nn.ReLU(),
             torch.nn.Linear(config.mlp_size + 512, config.mlp_size),
             torch.nn.ReLU(),
-            torch.nn.Linear(cofnig.mlp_size, config.term_label_size)
+            torch.nn.Linear(config.mlp_size, config.term_label_size)
         )
         self.term_loss = torch.nn.NLLLoss()
 
