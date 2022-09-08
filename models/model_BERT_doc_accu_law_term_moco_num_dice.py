@@ -30,25 +30,25 @@ class LawModel(nn.Module):
             param.requires_grad = True        
 
         self.accu_classifier = torch.nn.Sequential(
-            torch.nn.Linear(self.bert_config.hidden_size, 256),
+            torch.nn.Linear(self.bert_config.hidden_size, config.mlp_size),
             torch.nn.ReLU(),
-            torch.nn.Linear(256, config.accu_label_size)
+            torch.nn.Linear(config.mlp_size, config.accu_label_size)
         )
         self.accu_loss = torch.nn.NLLLoss()
         
         self.law_classifier = torch.nn.Sequential(
-            torch.nn.Linear(self.bert_config.hidden_size, 256),
+            torch.nn.Linear(self.bert_config.hidden_size, config.mlp_size),
             torch.nn.ReLU(),
-            torch.nn.Linear(256, config.law_label_size)
+            torch.nn.Linear(config.mlp_size, config.law_label_size)
         )
         self.law_loss = torch.nn.NLLLoss()
         
         self.term_classifier = torch.nn.Sequential(
-            torch.nn.Linear(self.bert_config.hidden_size, 256),
+            torch.nn.Linear(self.bert_config.hidden_size, config.mlp_size),
             torch.nn.ReLU(),
-            torch.nn.Linear(256 + 512, 256),
+            torch.nn.Linear(cofig.mlp_size + 512, config.mlp_size),
             torch.nn.ReLU(),
-            torch.nn.Linear(256, config.term_label_size)
+            torch.nn.Linear(cofnig.mlp_size, config.term_label_size)
         )
         self.term_loss = torch.nn.NLLLoss()
 
@@ -91,7 +91,6 @@ class LawModel(nn.Module):
 
         accu_rep = self.accu_classifier[1](self.accu_classifier[0](doc_out))
         law_rep = self.law_classifier[1](self.law_classifier[0](doc_out))
-        term_rep = self.term_classifier[1](self.term_classifier[0](doc_out))
 
         return accu_predicts, accu_loss, law_predicts, law_loss, term_predicts, term_loss, accu_rep, law_rep, term_rep
 
@@ -150,9 +149,9 @@ class MoCo(nn.Module):
 
         # create the queue
         self.register_buffer("doc_feature_queue", torch.randn(self.K, self.encoder_q.bert_config.hidden_size))
-        self.register_buffer("accu_feature_queue", torch.randn(self.K, config.HP_hidden_dim))
-        self.register_buffer("law_feature_queue", torch.randn(self.K, config.HP_hidden_dim))
-        self.register_buffer("term_feature_queue", torch.randn(self.K, config.HP_hidden_dim))
+        self.register_buffer("accu_feature_queue", torch.randn(self.K, config.mlp_size))
+        self.register_buffer("law_feature_queue", torch.randn(self.K, config.mlp_size))
+        self.register_buffer("term_feature_queue", torch.randn(self.K, config.mlp_size))
 
         self.doc_feature_queue = nn.functional.normalize(self.doc_feature_queue.cuda(), dim=1)
         self.accu_feature_queue = nn.functional.normalize(self.accu_feature_queue.cuda(), dim=1)

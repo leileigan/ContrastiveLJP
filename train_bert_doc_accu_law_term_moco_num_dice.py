@@ -114,7 +114,7 @@ class Config:
         self.warm_epoch = 0
         self.confused_matrix = None
         self.moco_hard_queue_size = 3000
-        self.mlp = True
+        self.mlp_size = 512
 
         self.is_dice = True 
         self.num_dice = True 
@@ -515,7 +515,7 @@ if __name__ == '__main__':
     parser.add_argument('--moco_queue_size', default=65536, type=int)
     parser.add_argument('--moco_momentum', default=0.999, type=float)
     parser.add_argument('--moco_temperature', default=0.07, type=float)
-    parser.add_argument('--mlp', action='store_true')
+    parser.add_argument('--mlp_size', default=512, type=int)
 
     parser.add_argument('--is_dice', default=1, type=int)
     parser.add_argument('--num_dice', default=10000, type=int)
@@ -558,7 +558,7 @@ if __name__ == '__main__':
         config.alpha2 = args.beta
         config.alpha3 = args.gama
         config.alpha4 = args.theta
-        config.mlp = args.mlp
+        config.mlp_size = args.mlp_size
 
         config.word2id_dict = pickle.load(open(args.word2id_dict, 'rb'))
         config.id2word_dict = {item[1]: item[0] for item in config.word2id_dict.items()}
@@ -578,6 +578,17 @@ if __name__ == '__main__':
         print("\nLoading data...")
         tokenizer = AutoTokenizer.from_pretrained(args.bert_path)
         train_data, valid_data, test_data = load_dataset(args.data_path)
+
+        if args.sample_size != 'all':
+            sample_size = int(args.sample_size)
+            sampled_train_data = {}
+            start = random.randint(0, len(train_data['fact_list'])-sample_size)
+            print("start:", start)
+            for k, v in train_data.items():
+                sampled_train_data[k] = train_data[k][start:start+sample_size]
+
+            train_data = sampled_train_data
+
         train_dataset = BERTDataset(train_data, tokenizer, config.MAX_SENTENCE_LENGTH, config.id2word_dict)
         valid_dataset = BERTDataset(valid_data, tokenizer, config.MAX_SENTENCE_LENGTH, config.id2word_dict)
         test_dataset = BERTDataset(test_data, tokenizer, config.MAX_SENTENCE_LENGTH, config.id2word_dict)
