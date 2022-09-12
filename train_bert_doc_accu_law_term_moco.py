@@ -451,7 +451,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Contrastive Legal Judgement Prediction')
     parser.add_argument('--data_path', default="/data/ganleilei/law/ContrastiveLJP/datasets/fyb_annotate/")
     parser.add_argument('--status', default="train")
-    parser.add_argument('--savemodel', default=BASE+"/results/bert/BERT_doc_accu_law_term_moco")
+    parser.add_argument('--savemodel', default=BASE+"/results/bert/XsBERT_doc_accu_law_term_moco")
     parser.add_argument('--loadmodel', default="")
 
     parser.add_argument('--embedding_path', default=BASE+'/cail_thulac.npy')
