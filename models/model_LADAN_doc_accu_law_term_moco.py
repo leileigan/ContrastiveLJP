@@ -626,6 +626,7 @@ class MoCo(nn.Module):
         exp_logits = torch.exp(logits + 1e-12)
         log_prob = logits - torch.log(exp_logits.sum(1, keepdim=True))
         # compute mean of log-likelihood over positive
+        # positive_accu_mask = accu_mask
         positive_accu_mask = accu_mask
         mean_log_prob_pos = (positive_accu_mask * log_prob).sum(1) / \
             (positive_accu_mask.sum(1) + 1e-12)  # [bsz]
@@ -640,8 +641,8 @@ class MoCo(nn.Module):
         exp_logits = torch.exp(logits + 1e-12)
         log_prob = logits - torch.log(exp_logits.sum(1, keepdim=True))
         # compute mean of log-likelihood over positive
-        positive_law_mask = law_mask
         # positive_law_mask = law_mask
+        positive_law_mask = law_mask
         mean_log_prob_pos = (positive_law_mask * log_prob).sum(1) / \
             (positive_law_mask.sum(1) + 1e-12)  # [bsz]
         law_loss = -mean_log_prob_pos.mean()
@@ -652,11 +653,11 @@ class MoCo(nn.Module):
         logits_max, _ = torch.max(cos_sim_with_t, dim=1, keepdim=True)
         logits = cos_sim_with_t - logits_max.detach()
         # compute log_prob
-        exp_logits = torch.exp(logits + 1e-12)
+        exp_logits = torch.exp(logits + 1e-12)# [bsz, queue_size]
+        positive_term_mask = term_mask
         log_prob = logits - torch.log(exp_logits.sum(1, keepdim=True))
         # compute mean of log-likelihood over positive
-        # positive_term_mask = accu_mask * law_mask * term_mask
-        positive_term_mask = term_mask
+        # positive_term_mask = term_mask
         mean_log_prob_pos = (positive_term_mask * log_prob).sum(1) / \
             (positive_term_mask.sum(1) + 1e-12)  # [bsz]
         term_loss = -mean_log_prob_pos.mean()
