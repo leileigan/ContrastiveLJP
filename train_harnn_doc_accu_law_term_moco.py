@@ -113,7 +113,7 @@ class Config:
         self.warm_epoch = 0
         self.confused_matrix = None
         self.moco_hard_queue_size = 3000
-        self.mlp = True
+        self.mlp_size = 256
 
         self.seed = 10
 
@@ -217,10 +217,16 @@ def collate_ladan_fn(batch):
 
 
 def load_dataset(path):
+    # """
     train_path = os.path.join(path, "train_processed_thulac_Legal_basis_with_fyb_annotate_number_field.pkl")
     valid_path = os.path.join(path, "valid_processed_thulac_Legal_basis_with_fyb_annotate_number_field.pkl")
     test_path = os.path.join(path, "test_processed_thulac_Legal_basis_with_fyb_annotate_number_field.pkl")
-    
+    """
+    train_path = os.path.join(path, "train_processed_thulac_Legal_basis.pkl")
+    valid_path = os.path.join(path, "valid_processed_thulac_Legal_basis.pkl")
+    test_path = os.path.join(path, "test_processed_thulac_Legal_basis.pkl")
+    """
+
     train_dataset = pickle.load(open(train_path, mode='rb'))
     valid_dataset = pickle.load(open(valid_path, mode='rb'))
     test_dataset = pickle.load(open(test_path, mode='rb'))
@@ -282,7 +288,7 @@ def evaluate(model, valid_dataloader, name, epoch_idx):
     predicts_accu_y, predicts_law_y, predicts_term_y = [], [], []   
 
     for batch_idx, datapoint in enumerate(valid_dataloader):
-        fact_list, _, accu_label_lists, law_label_lists, term_lists = datapoint
+        fact_list, raw_fact_lists, accu_label_lists, law_label_lists, term_lists = datapoint
         _, _, _, _, _, _, _, accu_preds, law_preds, term_preds = model.forward(fact_list, accu_label_lists,law_label_lists, term_lists, config.sent_len, config.doc_len)
 
         ground_accu_y.extend(accu_label_lists.tolist())
@@ -292,6 +298,8 @@ def evaluate(model, valid_dataloader, name, epoch_idx):
         predicts_accu_y.extend(accu_preds.tolist())
         predicts_law_y.extend(law_preds.tolist())
         predicts_term_y.extend(term_preds.tolist())
+        
+        raw_fact_lists.extend(raw_fact_lists)
 
         # if batch_idx == 10: break
     accu_accuracy = accuracy_score(ground_accu_y, predicts_accu_y)
@@ -307,8 +315,8 @@ def evaluate(model, valid_dataloader, name, epoch_idx):
 
     abs_score_lists, accu_s_lists = [], []
     # for i in range(119):
-    num_target_classes = [83, 11, 55, 16, 37, 102, 52, 107, 61, 12, 58, 75, 78, 38, 69, 60, 54, 94, 110, 88, 19, 30, 59, 26, 51, 118, 86, 49, 7] # number sensitive classes
-    # num_target_classes = [54, 86]
+    # num_target_classes = [83, 11, 55, 16, 37, 102, 52, 107, 61, 12, 58, 75, 78, 38, 69, 60, 54, 94, 110, 88, 19, 30, 59, 26, 51, 118, 86, 49, 7] # number sensitive classes
+    num_target_classes = [61, 6, 45, 92, 12, 116, 60, 7, 40, 115, 57, 121, 66, 13, 63, 83, 86, 41, 76, 65, 59, 106, 125, 97, 22, 33, 43, 64, 29, 56, 133, 95, 52,7] # big number sensitive classes
     g_t_lists, p_t_lists = [], []
     num_g_t_lists, num_p_t_lists = [], []
     for g_y, p_y, g_t, p_t in zip(ground_accu_y, predicts_accu_y, ground_term_y, predicts_term_y):
@@ -395,7 +403,7 @@ def train(model, dataset, config: Config):
             sample_accu_loss += accu_loss.data
             sample_law_loss += law_loss.data
             sample_term_loss += term_loss.data
-            sample_contra_loss += contra_accu_loss.data + contra_law_loss.data + contra_term_loss.data + contra_doc_loss.data
+            sample_contra_loss += config.alpha1 * contra_accu_loss.data + config.alpha2 * contra_law_loss.data + config.alpha3 * contra_term_loss.data + config.alpha4 * contra_doc_loss.data
 
             ground_accu_y.extend(accu_label_lists.tolist())
             ground_law_y.extend(law_label_lists.tolist())
@@ -478,7 +486,7 @@ if __name__ == '__main__':
     parser.add_argument('--moco_queue_size', default=65536, type=int)
     parser.add_argument('--moco_momentum', default=0.999, type=float)
     parser.add_argument('--moco_temperature', default=0.07, type=float)
-    parser.add_argument('--mlp', action='store_true')
+    parser.add_argument('--mlp_size', default=256, type=int)
 
     parser.add_argument('--charge_class_num', default=119, type=int)
     parser.add_argument('--law_class_num', default=103, type=int)
@@ -516,7 +524,7 @@ if __name__ == '__main__':
         config.alpha2 = args.beta
         config.alpha3 = args.gama
         config.alpha4 = args.theta
-        config.mlp = args.mlp
+        config.mlp_size = args.mlp_size
 
         config.accu_label_size = args.charge_class_num
         config.law_label_size = args.law_class_num
@@ -534,6 +542,17 @@ if __name__ == '__main__':
         print("\nLoading data...")
         tokenizer = AutoTokenizer.from_pretrained(args.bert_path)
         train_data, valid_data, test_data = load_dataset(args.data_path)
+        if args.sample_size != 'all':
+            sample_size = int(args.sample_size)
+            sampled_train_data = {}
+            start = random.randint(0, len(train_data['fact_list'])-sample_size)
+            print("start:", start)
+            for k, v in train_data.items():
+                print("keys:", k)
+                sampled_train_data[k] = train_data[k][start: start+sample_size]
+
+            train_data = sampled_train_data
+
         train_dataset = HARNNDataset(train_data, tokenizer, config.MAX_SENTENCE_LENGTH, config.id2word_dict)
         valid_dataset = HARNNDataset(valid_data, tokenizer, config.MAX_SENTENCE_LENGTH, config.id2word_dict)
         test_dataset = HARNNDataset(test_data, tokenizer, config.MAX_SENTENCE_LENGTH, config.id2word_dict)
