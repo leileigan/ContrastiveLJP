@@ -476,7 +476,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Contrastive Legal Judgement Prediction')
     parser.add_argument('--data_path', default="/data/ganleilei/law/ContrastiveLJP/datasets/fyb_annotate/")
     parser.add_argument('--status', default="train")
-    parser.add_argument('--savemodel', default=BASE+"/results/HARNN/HARNN_doc_accu_law_term_moco")
+    parser.add_argument('--savemodel', default=BASE+"/results/HARNN/HARNN_doc_accu_law_term_moco_num_dice")
     parser.add_argument('--loadmodel', default="")
 
     parser.add_argument('--embedding_path', default=BASE+'/cail_thulac.npy')
@@ -492,6 +492,7 @@ if __name__ == '__main__':
     parser.add_argument('--HP_lstmdropout', default=0.5, type=float)
     parser.add_argument('--HP_lstm_layer', default=1, type=int)
     parser.add_argument('--HP_lr', default=1e-3, type=float)
+    parser.add_argument('--HP_dice_lr', default=1e-3, type=float)
     parser.add_argument('--HP_lr_decay', default=0.05, type=float)
     parser.add_argument('--HP_freeze_word_emb', action='store_true')
 
@@ -510,6 +511,10 @@ if __name__ == '__main__':
     parser.add_argument('--moco_momentum', default=0.999, type=float)
     parser.add_argument('--moco_temperature', default=0.07, type=float)
     parser.add_argument('--mlp', action='store_true')
+
+    parser.add_argument('--charge_class_num', default=119, type=int)
+    parser.add_argument('--law_class_num', default=103, type=int)
+    parser.add_argument('--term_class_num', default=11, type=int)
 
     parser.add_argument('--is_dice', default=1, type=int)
     parser.add_argument('--num_dice', default=10000, type=int)
@@ -533,9 +538,10 @@ if __name__ == '__main__':
         config.HP_dropout = args.HP_dropout
         config.HP_lstm_layer = args.HP_lstm_layer
         config.HP_lr = args.HP_lr
+        config.HP_dice_lr = args.HP_dice_lr
         config.MAX_SENTENCE_LENGTH = args.MAX_SENTENCE_LENGTH
         config.HP_lr_decay = args.HP_lr_decay
-        config.save_model_dir = os.path.join(args.savemodel, f"alpha{args.alpha}_beta{args.beta}_gama{args.gama}_theta{args.theta}", f"{args.seed}")
+        config.save_model_dir = os.path.join(args.savemodel, f"alpha{args.alpha}_beta{args.beta}_gama{args.gama}_theta{args.theta}_dicelr{args.HP_dice_lr}", f"{args.seed}")
         config.HP_freeze_word_emb = args.HP_freeze_word_emb
         if not os.path.exists(config.save_model_dir):
             os.makedirs(config.save_model_dir)
@@ -550,6 +556,10 @@ if __name__ == '__main__':
         config.alpha3 = args.gama
         config.alpha4 = args.theta
         config.mlp = args.mlp
+
+        config.accu_label_size = args.charge_class_num
+        config.law_label_size = args.law_class_num
+        config.term_label_size = args.term_class_num
 
         config.word2id_dict = pickle.load(open(args.word2id_dict, 'rb'))
         config.id2word_dict = {item[1]: item[0] for item in config.word2id_dict.items()}
