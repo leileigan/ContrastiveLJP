@@ -307,15 +307,14 @@ def evaluate(model, valid_dataloader, name, epoch_idx):
 
     abs_score_lists, accu_s_lists = [], []
     # for i in range(119):
-    target_classes = list(range(120))
-    num_target_classes = [83, 11, 55, 16, 37, 102, 52, 107, 61, 12, 58, 75, 78, 38, 69, 60, 54, 94, 110, 88, 19, 30, 59, 26, 51, 118, 86, 49, 7] # number sensitive classes
-    # num_target_classes = [54, 86]
+    # num_target_classes = [83, 11, 55, 16, 37, 102, 52, 107, 61, 12, 58, 75, 78, 38, 69, 60, 54, 94, 110, 88, 19, 30, 59, 26, 51, 118, 86, 49, 7] # number sensitive classes
+    num_target_classes = [61, 6, 45, 92, 12, 116, 60, 7, 40, 115, 57, 121, 66, 13, 63, 83, 86, 41, 76, 65, 59, 106, 125, 97, 22, 33, 43, 64, 29, 56, 133, 95, 52,7] # big number sensitive classes
     g_t_lists, p_t_lists = [], []
     num_g_t_lists, num_p_t_lists = [], []
     for g_y, p_y, g_t, p_t in zip(ground_accu_y, predicts_accu_y, ground_term_y, predicts_term_y):
-        if g_y in target_classes:
-            g_t_lists.append(g_t)
-            p_t_lists.append(p_t)
+
+        g_t_lists.append(g_t)
+        p_t_lists.append(p_t)
         
         if g_y in num_target_classes:
             num_g_t_lists.append(g_t)
@@ -481,6 +480,10 @@ if __name__ == '__main__':
     parser.add_argument('--moco_temperature', default=0.07, type=float)
     parser.add_argument('--mlp', action='store_true')
 
+    parser.add_argument('--charge_class_num', default=119, type=int)
+    parser.add_argument('--law_class_num', default=103, type=int)
+    parser.add_argument('--term_class_num', default=11, type=int)
+
     parser.add_argument('--law_relation_threshold', default=0.3)
 
     args = parser.parse_args()
@@ -516,6 +519,10 @@ if __name__ == '__main__':
         config.alpha3 = args.gama
         config.alpha4 = args.theta
         config.mlp = args.mlp
+
+        config.accu_label_size = args.charge_class_num
+        config.law_label_size = args.law_class_num
+        config.term_label_size = args.term_class_num
 
         config.word2id_dict = pickle.load(open(args.word2id_dict, 'rb'))
         config.id2word_dict = {item[1]: item[0] for item in config.word2id_dict.items()}
