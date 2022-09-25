@@ -154,10 +154,11 @@ class LawModel(nn.Module):
         self.term_loss = torch.nn.NLLLoss()
 
         ### init graph
-        self.law_input, graph_list_1, graph_membership, neigh_index = get_law_graph(self.law_relation_threshold, config.word2id_dict, 15, 100)
+        # self.law_input, graph_list_1, graph_membership, neigh_index = get_law_graph(self.law_relation_threshold, config.word2id_dict, 15, 100)
+        self.law_input, graph_list_1, graph_membership, neigh_index = get_law_graph(self.law_relation_threshold, config.word2id_dict, 15, 100, 'law_processed/law_label2index_big.pkl', self.config.law_label_size)
         self.law_input = torch.from_numpy(self.law_input).cuda()
         self.max_graph = len(graph_list_1)
-        self.deg_list = [len(neigh_index[i]) for i in range(103)]
+        self.deg_list = [len(neigh_index[i]) for i in range(self.config.law_label_size)]
         self.graph_list = list(zip(*graph_membership))[1]
         # print("graph list 1:", graph_list_1)
         # print("neigh index:", neigh_index)
@@ -166,7 +167,7 @@ class LawModel(nn.Module):
         self.max_deg = len(neigh_index[-1][1])
         t = 0
         self.adj_list = [[]]
-        for i in range(103):
+        for i in range(self.config.law_label_size):
             each = neigh_index[i]
             if len(each[1]) != t:
                 for j in range(t, len(each[1])):
@@ -413,10 +414,10 @@ class LawModel(nn.Module):
         Returns:
             [type]: [description]
         """
-        law_article_labels = torch.LongTensor(range(103)).cuda()
-        gold_matrix_law = F.one_hot(law_labels, 103).float() #[batch_size, 103]
-        gold_matrix_accu = F.one_hot(accu_labels, 119).float() #[batch_size, 119]
-        gold_matrix_time = F.one_hot(term_labels, 12).float() #[batch_size, 12]
+        law_article_labels = torch.LongTensor(range(self.config.law_label_size)).cuda()
+        gold_matrix_law = F.one_hot(law_labels, self.config.law_label_size).float() #[batch_size, 103]
+        gold_matrix_accu = F.one_hot(accu_labels, self.config.accu_label_size).float() #[batch_size, 119]
+        gold_matrix_time = F.one_hot(term_labels, self.config.term_label_size).float() #[batch_size, 12]
         # print("max graph:", self.max_graph)
         # print("gold matrix law size:", gold_matrix_law.size())
         # graph_labels = dynamic_partition(gold_matrix_law.transpose(1, 0), self.graph_list, self.max_graph)
