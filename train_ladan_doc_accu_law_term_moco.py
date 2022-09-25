@@ -396,7 +396,7 @@ def train(model, dataset, config: Config):
             sample_accu_loss += accu_loss.data
             sample_law_loss += law_loss.data
             sample_term_loss += term_loss.data
-            sample_contra_loss += contra_accu_loss.data + contra_law_loss.data + contra_term_loss.data + contra_doc_loss.data
+            sample_contra_loss += config.alpha1*contra_accu_loss.data + config.alpha2*contra_law_loss.data + config.alpha3*contra_term_loss.data + config.alpha4*contra_doc_loss.data
 
             ground_accu_y.extend(accu_label_lists.tolist())
             ground_law_y.extend(law_label_lists.tolist())
