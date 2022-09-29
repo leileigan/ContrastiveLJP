@@ -188,8 +188,10 @@ class NeurJudge(nn.Module):
         return accu_predicts, law_predicts, term_predicts, accu_loss, law_loss, term_loss, df, fact_article_hidden, fact_legal_time_hidden
  
 class NeurJudge_plus(nn.Module):
-    def __init__(self,embedding):
+    def __init__(self, config):
         super(NeurJudge_plus, self).__init__()
+        embedding = config.pretrain_word_embedding
+        self.config = config
         self.charge_tong = json.load(open(BASE+'/NeurJudge_config_data/charge_tong.json'))
         self.art_tong = json.load(open(BASE+'/NeurJudge_config_data/art_tong.json'))
         self.id2charge = json.load(open(BASE+'/NeurJudge_config_data/id2charge.json'))
@@ -212,9 +214,9 @@ class NeurJudge_plus(nn.Module):
         self.mask_attention_article = Mask_Attention()
 
         self.encoder_charge = nn.GRU(self.data_size,self.hidden_dim, batch_first=True, bidirectional=True)
-        self.charge_pred = nn.Linear(self.hidden_dim*6,119)
-        self.article_pred = nn.Linear(self.hidden_dim*8,103)
-        self.time_pred = nn.Linear(self.hidden_dim*6,11)
+        self.charge_pred = nn.Linear(self.hidden_dim*6,config.accu_label_size)
+        self.article_pred = nn.Linear(self.hidden_dim*8,config.law_label_size)
+        self.time_pred = nn.Linear(self.hidden_dim*6,config.term_label_size)
 
         self.accu_loss = torch.nn.NLLLoss()
         self.law_loss = torch.nn.NLLLoss()
@@ -284,7 +286,7 @@ class NeurJudge_plus(nn.Module):
         # the number of spreading layers is set as 2
         layers = 2
         # GDO for the charge graph
-        new_charge = self.graph_decomposition_operation(_label = _charge, label_sim = self.charge_tong, id2label = id2charge_tong, label2id = charge_tong2id, num_label = 119, layers = 2)
+        new_charge = self.graph_decomposition_operation(_label = _charge, label_sim = self.charge_tong, id2label = id2charge_tong, label2id = charge_tong2id, num_label = self.config.accu_label_size, layers = 2)
 
         # GDO for the article graph
         new_article = self.graph_decomposition_operation(_label = _article, label_sim = self.art_tong, id2label = id2art, label2id = art2id, num_label = 103, layers = 2)
@@ -371,8 +373,8 @@ class MoCo(nn.Module):
         self.T = config.moco_temperature
         # create the encoders
         # num_classes is the output fc dimension
-        self.encoder_q = NeurJudge_plus(config.pretrain_word_embedding)
-        self.encoder_k = NeurJudge_plus(config.pretrain_word_embedding)
+        self.encoder_q = NeurJudge_plus(config)
+        self.encoder_k = NeurJudge_plus(config)
         self.config = config
         self.confused_matrix = config.confused_matrix #[119, 119]
         
