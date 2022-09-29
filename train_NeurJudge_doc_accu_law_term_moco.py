@@ -164,18 +164,7 @@ class NeurJudgeDataset(Dataset):
     def __init__(self, data, tokenizer, max_len, id2word_dict):
         self.tokenizer = tokenizer
         self.max_len = max_len
-        filtered_data = {'fact_list':[], 'accu_label_lists':[], 'law_label_lists':[], 'term_lists': [], 'raw_fact_lists': []}
-        self.number_intensive_classes = list(range(120))
-        # self.number_intensive_classes = [42]
-        for index in range(len(data['fact_list'])):
-            if data['accu_label_lists'][index] not in self.number_intensive_classes: continue
-            filtered_data['fact_list'].append(data['fact_list'][index])
-            filtered_data['accu_label_lists'].append(data['accu_label_lists'][index])
-            filtered_data['law_label_lists'].append(data['law_label_lists'][index])
-            filtered_data['term_lists'].append(data['term_lists'][index])
-            filtered_data['raw_fact_lists'].append(data['raw_facts_list'][index])
-            
-        self.data = filtered_data
+        self.data = data
         self.id2word_dict = id2word_dict
 
     def __len__(self):
@@ -191,7 +180,7 @@ class NeurJudgeDataset(Dataset):
 
     def __getitem__(self, index):
         fact_list = self.data['fact_list'][index]
-        raw_fact_list = self._convert_ids_to_sent(fact_list) 
+        raw_fact_list = self.data['raw_facts_list'][index]
         accu_label_lists = self.data['accu_label_lists'][index]
         law_label_lists = self.data['law_label_lists'][index]
         term_lists = self.data['term_lists'][index]
@@ -229,7 +218,10 @@ def load_dataset(path):
     valid_dataset = pickle.load(open(valid_path, mode='rb'))
     test_dataset = pickle.load(open(test_path, mode='rb'))
 
-    print("train dataset sample len:", len(train_dataset['law_label_lists']))
+    print("train dataset law label sample len:", len(train_dataset['law_label_lists']))
+    print("train dataset accu label sample len:", len(train_dataset['accu_label_lists']))
+    print("train dataset term label sample len:", len(train_dataset['term_lists']))
+
     return train_dataset, valid_dataset, test_dataset
 
 
@@ -315,10 +307,8 @@ def evaluate(model, valid_dataloader, process, name, epoch_idx):
     score = get_result(ground_accu_y, predicts_accu_y, ground_law_y, predicts_law_y, ground_term_y, predicts_term_y, name)
 
     abs_score_lists, accu_s_lists = [], []
-    # for i in range(119):
-    # num_target_classes = [83, 11, 55, 16, 37, 102, 52, 107, 61, 12, 58, 75, 78, 38, 69, 60, 54, 94, 110, 88, 19, 30, 59, 26, 51, 118, 86, 49, 7] # number sensitive classes
+    num_target_classes = [83, 11, 55, 16, 37, 102, 52, 107, 61, 12, 58, 75, 78, 38, 69, 60, 54, 94, 110, 88, 19, 30, 59, 26, 51, 118, 86, 49, 7] # number sensitive classes
     # num_target_classes = [54, 86]
-    num_target_classes = [61, 6, 45, 92, 12, 116, 60, 7, 40, 115, 57, 121, 66, 13, 63, 83, 86, 41, 76, 65, 59, 106, 125, 97, 22, 33, 43, 64, 29, 56, 133, 95, 52,7] # big number sensitive classes
 
     g_t_lists, p_t_lists = [], []
     num_g_t_lists, num_p_t_lists = [], []
@@ -356,10 +346,10 @@ def evaluate(model, valid_dataloader, process, name, epoch_idx):
 
 
 def train(model, dataset, config: Config):
-    train_data_set = dataset["train_data_set"]
+    train_dataloader = dataset["train_data_set"]
     # train_data_set = dataset["valid_data_set"]
-    valid_data_set = dataset["valid_data_set"]
-    test_data_set = dataset["test_data_set"]
+    valid_dataloader = dataset["valid_data_set"]
+    test_dataloader = dataset["test_data_set"]
     print("config batch size:", config.HP_batch_size)
     print("Training model...")
     print(model)
@@ -400,7 +390,7 @@ def train(model, dataset, config: Config):
         ground_term_y, predicts_term_y = [], []
 
         for batch_idx, datapoint in enumerate(train_dataloader):
-            documents, _, accu_label_lists, law_label_lists, term_lists = datapoint
+            documents, raw_facts, accu_label_lists, law_label_lists, term_lists = datapoint
             contra_doc_loss, contra_accu_loss, contra_law_loss, contra_term_loss, accu_loss, law_loss, term_loss, accu_preds, law_preds, term_preds = \
                 model.forward(legals,legals_len,arts,arts_sent_lent, \
                 charge_tong2id,id2charge_tong,art2id,id2art,documents, \
@@ -548,6 +538,18 @@ if __name__ == '__main__':
         print("\nLoading data...")
         tokenizer = AutoTokenizer.from_pretrained(args.bert_path)
         train_data, valid_data, test_data = load_dataset(args.data_path)
+
+        if args.sample_size != 'all':
+            sample_size = int(args.sample_size)
+            sampled_train_data = {}
+            start = random.randint(0, len(train_data['fact_list'])-sample_size)
+            print("start:", start)
+            for k, v in train_data.items():
+                print("keys:", k)
+                sampled_train_data[k] = train_data[k][start: start+sample_size]
+
+            train_data = sampled_train_data
+
         train_dataset = NeurJudgeDataset(train_data, tokenizer, config.MAX_SENTENCE_LENGTH, config.id2word_dict)
         valid_dataset = NeurJudgeDataset(valid_data, tokenizer, config.MAX_SENTENCE_LENGTH, config.id2word_dict)
         test_dataset = NeurJudgeDataset(test_data, tokenizer, config.MAX_SENTENCE_LENGTH, config.id2word_dict)
