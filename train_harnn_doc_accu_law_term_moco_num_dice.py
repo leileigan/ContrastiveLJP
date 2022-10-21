@@ -210,7 +210,7 @@ class HARNNDataset(Dataset):
         return fact_list, raw_fact_list, accu_label_lists, law_label_lists, term_lists, money_amount_lists, drug_weight_lists 
 
 
-def collate_ladan_fn(batch):
+def collate_harnn_fn(batch):
     
     batch_fact_list, batch_raw_fact_list, batch_law_label_lists, batch_accu_label_lists, batch_term_lists, batch_money_amount, batch_drug_weight = [], [], [], [], [], [], []
     for item in batch:
@@ -296,6 +296,14 @@ def get_result(accu_target, accu_preds, law_target, law_preds, term_target, term
     print("Accu task: macro_f1:%.4f, macro_precision:%.4f, macro_recall:%.4f" % (accu_macro_f1, accu_macro_precision, accu_macro_recall))
     print("Law task: macro_f1:%.4f, macro_precision:%.4f, macro_recall:%.4f" % (law_macro_f1, law_macro_precision, law_macro_recall))
     print("Term task: macro_f1:%.4f, macro_precision:%.4f, macro_recall:%.4f" % (term_macro_f1, term_macro_precision, term_macro_recall))
+
+    conf_target_classes = [1, 3, 5, 6, 11, 12, 15, 18, 22, 24, 25, 26, 27, 30, 33, 38, 42, 44, 45, 48, 54, 55, 61, 68, 69, 74, 77, 78, 79, 82, 86, 91, 93, 100, 105, 108, 110, 111, 112, 113, 118]
+
+    conf_accu_macro_f1 = f1_score(accu_target, accu_preds, labels=conf_target_classes, average="macro")
+    conf_accu_macro_precision = precision_score(accu_target, accu_preds, labels=conf_target_classes,average="macro")
+    conf_accu_macro_recall = recall_score(accu_target, accu_preds, labels=conf_target_classes, average="macro")
+
+    print("Confusing Accu task: macro_f1:%.4f, macro_precision:%.4f, macro_recall:%.4f" % (conf_accu_macro_f1, conf_accu_macro_precision, conf_accu_macro_recall))
 
     return accu_macro_f1 + law_macro_f1 + term_macro_f1
 
@@ -584,9 +592,9 @@ if __name__ == '__main__':
         valid_dataset = HARNNDataset(valid_data, tokenizer, config.MAX_SENTENCE_LENGTH, config.id2word_dict)
         test_dataset = HARNNDataset(test_data, tokenizer, config.MAX_SENTENCE_LENGTH, config.id2word_dict)
 
-        train_dataloader = DataLoader(train_dataset, batch_size=config.HP_batch_size, shuffle=True, collate_fn=collate_ladan_fn)
-        valid_dataloader = DataLoader(valid_dataset, batch_size=config.HP_batch_size, shuffle=False, collate_fn=collate_ladan_fn)
-        test_dataloader = DataLoader(test_dataset, batch_size=config.HP_batch_size, shuffle=False, collate_fn=collate_ladan_fn)
+        train_dataloader = DataLoader(train_dataset, batch_size=config.HP_batch_size, shuffle=True, collate_fn=collate_harnn_fn)
+        valid_dataloader = DataLoader(valid_dataset, batch_size=config.HP_batch_size, shuffle=False, collate_fn=collate_harnn_fn)
+        test_dataloader = DataLoader(test_dataset, batch_size=config.HP_batch_size, shuffle=False, collate_fn=collate_harnn_fn)
 
         print("train_data %d, valid_data %d, test_data %d." % (
             len(train_dataset), len(valid_dataset), len(test_dataset)))
@@ -605,8 +613,22 @@ if __name__ == '__main__':
         train(model, data_dict, config)
 
     elif status == 'test':
-        if os.path.exists(args.loadmodel) is False or os.path.exists(args.savedset) is False:
-            print('File path does not exit: %s and %s' % (args.loadmodel, args.savedset))
+        if os.path.exists(args.loadmodel) is False:
+            print('File path does not exit: %s' % args.loadmodel)
             exit(1)
 
-        config = load_data_setting(args.savedset)
+        print("\nLoading data...")
+        savedset_path = os.path.join(args.loadmodel, "data.dset")
+        config = load_data_setting(savedset_path)
+        tokenizer = AutoTokenizer.from_pretrained(args.bert_path)
+        train_data, valid_data, test_data = load_dataset(args.data_path)
+        train_dataset = HARNNDataset(train_data, tokenizer, config.MAX_SENTENCE_LENGTH, config.id2word_dict)
+        valid_dataset = HARNNDataset(valid_data, tokenizer, config.MAX_SENTENCE_LENGTH, config.id2word_dict)
+        test_dataset = HARNNDataset(test_data, tokenizer, config.MAX_SENTENCE_LENGTH, config.id2word_dict)
+
+        train_dataloader = DataLoader(train_dataset, batch_size=config.HP_batch_size, shuffle=False, collate_fn=collate_harnn_fn)
+        valid_dataloader = DataLoader(valid_dataset, batch_size=config.HP_batch_size, shuffle=False, collate_fn=collate_harnn_fn)
+        test_dataloader = DataLoader(test_dataset, batch_size=config.HP_batch_size, shuffle=False, collate_fn=collate_harnn_fn)
+        model_path = os.path.join(args.loadmodel, "best.ckpt")
+        model = load_model(model_path, config, True)
+        score = evaluate(model, test_dataloader, "Test", 0)
