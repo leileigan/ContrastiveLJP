@@ -68,7 +68,7 @@ class Config:
 
         self.accu_label_size = 119
         self.law_label_size = 103
-        self.term_label_size = 12
+        self.term_label_size = 11
         self.law_relation_threshold = 0.3
 
         self.sent_len = 100
@@ -167,8 +167,6 @@ class Config:
 
 num2id_dict = {str(i):i for i in range(10)}
 num2id_dict["."] = 10
-# num_target_classes = [83, 11, 55, 16, 37, 102, 52, 107, 61, 12, 58, 75, 78, 38, 69, 60, 54, 94, 110, 88, 19, 30, 59, 26, 51, 118, 86, 49, 7] # number sensitive classes
-num_target_classes = range(120)
 class NeurJudgeDataset(Dataset):
 
     def __init__(self, data, tokenizer, max_len, id2word_dict):
@@ -291,6 +289,14 @@ def get_result(accu_target, accu_preds, law_target, law_preds, term_target, term
     print("Law task: macro_f1:%.4f, macro_precision:%.4f, macro_recall:%.4f" % (law_macro_f1, law_macro_precision, law_macro_recall))
     print("Term task: macro_f1:%.4f, macro_precision:%.4f, macro_recall:%.4f" % (term_macro_f1, term_macro_precision, term_macro_recall))
 
+    conf_target_classes = [1, 3, 5, 6, 11, 12, 15, 18, 22, 24, 25, 26, 27, 30, 33, 38, 42, 44, 45, 48, 54, 55, 61, 68, 69, 74, 77, 78, 79, 82, 86, 91, 93, 100, 105, 108, 110, 111, 112, 113, 118]
+
+    conf_accu_macro_f1 = f1_score(accu_target, accu_preds, labels=conf_target_classes, average="macro")
+    conf_accu_macro_precision = precision_score(accu_target, accu_preds, labels=conf_target_classes,average="macro")
+    conf_accu_macro_recall = recall_score(accu_target, accu_preds, labels=conf_target_classes, average="macro")
+
+    print("Confusing Accu task: macro_f1:%.4f, macro_precision:%.4f, macro_recall:%.4f" % (conf_accu_macro_f1, conf_accu_macro_precision, conf_accu_macro_recall))
+
     return accu_macro_f1 + law_macro_f1 + term_macro_f1
 
 
@@ -331,15 +337,13 @@ def evaluate(model, valid_dataloader, process, name, epoch_idx):
 
     abs_score_lists, accu_s_lists = [], []
     # for i in range(119):
-    target_classes = list(range(120))
     num_target_classes = [83, 11, 55, 16, 37, 102, 52, 107, 61, 12, 58, 75, 78, 38, 69, 60, 54, 94, 110, 88, 19, 30, 59, 26, 51, 118, 86, 49, 7] # number sensitive classes
     # num_target_classes = [54, 86]
     g_t_lists, p_t_lists = [], []
     num_g_t_lists, num_p_t_lists = [], []
     for g_y, p_y, g_t, p_t in zip(ground_accu_y, predicts_accu_y, ground_term_y, predicts_term_y):
-        if g_y in target_classes:
-            g_t_lists.append(g_t)
-            p_t_lists.append(p_t)
+        g_t_lists.append(g_t)
+        p_t_lists.append(p_t)
         
         if g_y in num_target_classes:
             num_g_t_lists.append(g_t)
@@ -371,10 +375,10 @@ def evaluate(model, valid_dataloader, process, name, epoch_idx):
 
 
 def train(model, dataset, config: Config):
-    train_data_set = dataset["train_data_set"]
+    train_dataloader = dataset["train_data_set"]
     # train_data_set = dataset["valid_data_set"]
-    valid_data_set = dataset["valid_data_set"]
-    test_data_set = dataset["test_data_set"]
+    valid_dataloader = dataset["valid_data_set"]
+    test_dataloader = dataset["test_data_set"]
     print("config batch size:", config.HP_batch_size)
     print("Training model...")
     print(model)
@@ -415,7 +419,7 @@ def train(model, dataset, config: Config):
         ground_term_y, predicts_term_y = [], []
 
         for batch_idx, datapoint in enumerate(train_dataloader):
-            documents, _, accu_label_lists, law_label_lists, term_lists, money_lists, _ = datapoint
+            documents, raw_facts, accu_label_lists, law_label_lists, term_lists, money_lists, _ = datapoint
             contra_doc_loss, contra_accu_loss, contra_law_loss, contra_term_loss, accu_loss, law_loss, term_loss, accu_preds, law_preds, term_preds = \
                 model.forward(legals,legals_len,arts,arts_sent_lent, \
                 charge_tong2id,id2charge_tong,art2id,id2art,documents, \
@@ -426,7 +430,7 @@ def train(model, dataset, config: Config):
             sample_accu_loss += accu_loss.data
             sample_law_loss += law_loss.data
             sample_term_loss += term_loss.data
-            sample_contra_loss += contra_accu_loss.data + contra_law_loss.data + contra_term_loss.data + contra_doc_loss.data
+            sample_contra_loss += config.alpha1*contra_accu_loss.data + config.alpha2*contra_law_loss.data +config.alpha3*contra_term_loss.data + config.alpha4*contra_doc_loss.data
 
             ground_accu_y.extend(accu_label_lists.tolist())
             ground_law_y.extend(law_label_lists.tolist())
@@ -518,6 +522,11 @@ if __name__ == '__main__':
 
     parser.add_argument('--law_relation_threshold', default=0.3)
 
+    parser.add_argument('--charge_class_num', default=119, type=int)
+    parser.add_argument('--law_class_num', default=103, type=int)
+    parser.add_argument('--term_class_num', default=11, type=int)
+
+
     args = parser.parse_args()
 
     status = args.status
@@ -550,6 +559,10 @@ if __name__ == '__main__':
         config.alpha2 = args.beta
         config.alpha3 = args.gama
         config.alpha4 = args.theta
+
+        config.accu_label_size = args.charge_class_num
+        config.law_label_size = args.law_class_num
+        config.term_label_size = args.term_class_num
 
         config.word2id_dict = pickle.load(open(args.word2id_dict, 'rb'))
         config.id2word_dict = {item[1]: item[0] for item in config.word2id_dict.items()}
@@ -594,8 +607,24 @@ if __name__ == '__main__':
         train(model, data_dict, config)
 
     elif status == 'test':
-        if os.path.exists(args.loadmodel) is False or os.path.exists(args.savedset) is False:
-            print('File path does not exit: %s and %s' % (args.loadmodel, args.savedset))
+        if os.path.exists(args.loadmodel) is False:
+            print('File path does not exit: %s and %s' % args.loadmodel)
             exit(1)
 
-        config = load_data_setting(args.savedset)
+        print("\nLoading data...")
+        savedset_path = os.path.join(args.loadmodel, "data.dset")
+        config = load_data_setting(savedset_path)
+        config.HP_hidden_dim = args.HP_hidden_dim
+        tokenizer = AutoTokenizer.from_pretrained(args.bert_path)
+        train_data, valid_data, test_data = load_dataset(args.data_path)
+        train_dataset = NeurJudgeDataset(train_data, tokenizer, config.MAX_SENTENCE_LENGTH, config.id2word_dict)
+        valid_dataset = NeurJudgeDataset(valid_data, tokenizer, config.MAX_SENTENCE_LENGTH, config.id2word_dict)
+        test_dataset = NeurJudgeDataset(test_data, tokenizer, config.MAX_SENTENCE_LENGTH, config.id2word_dict)
+
+        train_dataloader = DataLoader(train_dataset, batch_size=config.HP_batch_size, shuffle=False, collate_fn=collate_neur_judge_fn)
+        valid_dataloader = DataLoader(valid_dataset, batch_size=config.HP_batch_size, shuffle=False, collate_fn=collate_neur_judge_fn)
+        test_dataloader = DataLoader(test_dataset, batch_size=config.HP_batch_size, shuffle=False, collate_fn=collate_neur_judge_fn)
+        model_path = os.path.join(args.loadmodel, "best.ckpt")
+        model = load_model(model_path, config, True)
+        process = Data_Process()
+        score = evaluate(model, test_dataloader, process, "Test", 0)
