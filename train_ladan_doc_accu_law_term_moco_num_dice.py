@@ -292,6 +292,14 @@ def get_result(accu_target, accu_preds, law_target, law_preds, term_target, term
     print("Law task: macro_f1:%.4f, macro_precision:%.4f, macro_recall:%.4f" % (law_macro_f1, law_macro_precision, law_macro_recall))
     print("Term task: macro_f1:%.4f, macro_precision:%.4f, macro_recall:%.4f" % (term_macro_f1, term_macro_precision, term_macro_recall))
 
+    conf_target_classes = [1, 3, 5, 6, 11, 12, 15, 18, 22, 24, 25, 26, 27, 30, 33, 38, 42, 44, 45, 48, 54, 55, 61, 68, 69, 74, 77, 78, 79, 82, 86, 91, 93, 100, 105, 108, 110, 111, 112, 113, 118]
+
+    conf_accu_macro_f1 = f1_score(accu_target, accu_preds, labels=conf_target_classes, average="macro")
+    conf_accu_macro_precision = precision_score(accu_target, accu_preds, labels=conf_target_classes,average="macro")
+    conf_accu_macro_recall = recall_score(accu_target, accu_preds, labels=conf_target_classes, average="macro")
+
+    print("Confusing Accu task: macro_f1:%.4f, macro_precision:%.4f, macro_recall:%.4f" % (conf_accu_macro_f1, conf_accu_macro_precision, conf_accu_macro_recall))
+
     return accu_macro_f1 + law_macro_f1 + term_macro_f1
 
 
