@@ -272,6 +272,14 @@ def get_result(accu_target, accu_preds, law_target, law_preds, term_target, term
     print("Law task: macro_f1:%.4f, macro_precision:%.4f, macro_recall:%.4f" % (law_macro_f1, law_macro_precision, law_macro_recall))
     print("Term task: macro_f1:%.4f, macro_precision:%.4f, macro_recall:%.4f" % (term_macro_f1, term_macro_precision, term_macro_recall))
 
+    conf_target_classes = [1, 3, 5, 6, 11, 12, 15, 18, 22, 24, 25, 26, 27, 30, 33, 38, 42, 44, 45, 48, 54, 55, 61, 68, 69, 74, 77, 78, 79, 82, 86, 91, 93, 100, 105, 108, 110, 111, 112, 113, 118]
+
+    conf_accu_macro_f1 = f1_score(accu_target, accu_preds, labels=conf_target_classes, average="macro")
+    conf_accu_macro_precision = precision_score(accu_target, accu_preds, labels=conf_target_classes,average="macro")
+    conf_accu_macro_recall = recall_score(accu_target, accu_preds, labels=conf_target_classes, average="macro")
+
+    print("Confusing Accu task: macro_f1:%.4f, macro_precision:%.4f, macro_recall:%.4f" % (conf_accu_macro_f1, conf_accu_macro_precision, conf_accu_macro_recall))
+
     return accu_macro_f1 + law_macro_f1 + term_macro_f1
 
 
@@ -307,8 +315,8 @@ def evaluate(model, valid_dataloader, name, epoch_idx):
 
     abs_score_lists, accu_s_lists = [], []
     # for i in range(119):
-    # num_target_classes = [83, 11, 55, 16, 37, 102, 52, 107, 61, 12, 58, 75, 78, 38, 69, 60, 54, 94, 110, 88, 19, 30, 59, 26, 51, 118, 86, 49, 7] # number sensitive classes
-    num_target_classes = [61, 6, 45, 92, 12, 116, 60, 7, 40, 115, 57, 121, 66, 13, 63, 83, 86, 41, 76, 65, 59, 106, 125, 97, 22, 33, 43, 64, 29, 56, 133, 95, 52,7] # big number sensitive classes
+    num_target_classes = [83, 11, 55, 16, 37, 102, 52, 107, 61, 12, 58, 75, 78, 38, 69, 60, 54, 94, 110, 88, 19, 30, 59, 26, 51, 118, 86, 49, 7] # number sensitive classes
+    # num_target_classes = [61, 6, 45, 92, 12, 116, 60, 7, 40, 115, 57, 121, 66, 13, 63, 83, 86, 41, 76, 65, 59, 106, 125, 97, 22, 33, 43, 64, 29, 56, 133, 95, 52,7] # big number sensitive classes
     g_t_lists, p_t_lists = [], []
     num_g_t_lists, num_p_t_lists = [], []
     for g_y, p_y, g_t, p_t in zip(ground_accu_y, predicts_accu_y, ground_term_y, predicts_term_y):
@@ -561,8 +569,22 @@ if __name__ == '__main__':
         train(model, data_dict, config)
 
     elif status == 'test':
-        if os.path.exists(args.loadmodel) is False or os.path.exists(args.savedset) is False:
-            print('File path does not exit: %s and %s' % (args.loadmodel, args.savedset))
+        if os.path.exists(args.loadmodel) is False:
+            print('File path does not exit: %s' % args.loadmodel)
             exit(1)
 
-        config = load_data_setting(args.savedset)
+        print("\nLoading data...")
+        savedset_path = os.path.join(args.loadmodel, "data.dset")
+        config = load_data_setting(savedset_path)
+        tokenizer = AutoTokenizer.from_pretrained(args.bert_path)
+        train_data, valid_data, test_data = load_dataset(args.data_path)
+        train_dataset = LADANDataset(train_data, tokenizer, config.MAX_SENTENCE_LENGTH, config.id2word_dict)
+        valid_dataset = LADANDataset(valid_data, tokenizer, config.MAX_SENTENCE_LENGTH, config.id2word_dict)
+        test_dataset = LADANDataset(test_data, tokenizer, config.MAX_SENTENCE_LENGTH, config.id2word_dict)
+
+        train_dataloader = DataLoader(train_dataset, batch_size=config.HP_batch_size, shuffle=False, collate_fn=collate_ladan_fn)
+        valid_dataloader = DataLoader(valid_dataset, batch_size=config.HP_batch_size, shuffle=False, collate_fn=collate_ladan_fn)
+        test_dataloader = DataLoader(test_dataset, batch_size=config.HP_batch_size, shuffle=False, collate_fn=collate_ladan_fn)
+        model_path = os.path.join(args.loadmodel, "best.ckpt")
+        model = load_model(model_path, config, True)
+        score = evaluate(model, test_dataloader, "Test", 0)
