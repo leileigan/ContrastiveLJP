@@ -5,16 +5,11 @@ import jieba
 import tensorflow as tf
 from collections import Iterable
 from sklearn.feature_extraction.text import TfidfVectorizer
-import matplotlib.pyplot as plt
 import seaborn as sns
-import matplotlib.patheffects as PathEffects
-from sklearn.preprocessing import MultiLabelBinarizer
-from sklearn.preprocessing import OneHotEncoder
 from scipy import sparse
 import gensim
 import thulac
 import pickle as pk
-from stanfordcorenlp import StanfordCoreNLP
 from string import punctuation
 
 add_punc='，。、【 】 “”：；（）《》‘’{}？！⑦()、%^>℃：.”“^-——=&#@￥'
@@ -202,6 +197,7 @@ def lookup_index_for_sentences(x, word2id, doc_len, sent_len):
 
 def gen_law_relation(word2id_dict, law_label2index_path='law_processed/law_label2index.pkl', doc_len=10, sent_len=100):
     law_file_order = pk.load(open(law_label2index_path, 'rb'))
+    print("law label to index", law_file_order)
     n_law = len(law_file_order)
     law_list = law_to_list('law_processed/criminal_law.txt')
     laws = cut_law(law_list, order=law_file_order, cut_sentence=True, cut_penalty=True, stop_words_filtered=True)
@@ -259,15 +255,13 @@ def graph_generation(neigh_index):
     return graph, graph_ship
 
 
-def get_law_graph(threshold, word2id_file, doc_len, sent_len):
-    f = open(word2id_file, 'rb')
-    word2id_dict = pk.load(f)
-    f.close()
-    neigh_mat, law_index_matrix = gen_law_relation(word2id_dict, doc_len=doc_len, sent_len=sent_len)
+def get_law_graph(threshold, word2id_dict, doc_len, sent_len, law_label2index_path='law_processed/law_label2index.pkl', law_class_size=103):
+    print("law class size:", law_class_size)
+    neigh_mat, law_index_matrix = gen_law_relation(word2id_dict, law_label2index_path=law_label2index_path, doc_len=doc_len, sent_len=sent_len)
     neigh_index = np.where(neigh_mat > threshold)
     # print(neigh_index)
     neigh_index = list(zip(*neigh_index))
-    neigh_index = {i: [j for j in range(103) if (i, j) in neigh_index and j != i] for i in range(103)}
+    neigh_index = {i: [j for j in range(law_class_size) if (i, j) in neigh_index and j != i] for i in range(law_class_size)}
     graph_list_1, graph_membership = graph_generation(neigh_index)
     return law_index_matrix, graph_list_1, graph_membership, neigh_index
 
