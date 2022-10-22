@@ -155,7 +155,8 @@ class LawModel(nn.Module):
 
         ### init graph
         # self.law_input, graph_list_1, graph_membership, neigh_index = get_law_graph(self.law_relation_threshold, config.word2id_dict, 15, 100)
-        self.law_input, graph_list_1, graph_membership, neigh_index = get_law_graph(self.law_relation_threshold, config.word2id_dict, 15, 100, 'law_processed/law_label2index_big.pkl', self.config.law_label_size)
+        self.law_input, graph_list_1, graph_membership, neigh_index = get_law_graph(self.law_relation_threshold, config.word2id_dict, 15, 100, 'law_processed/law_label2index.pkl', self.config.law_label_size)
+        # self.law_input, graph_list_1, graph_membership, neigh_index = get_law_graph(self.law_relation_threshold, config.word2id_dict, 15, 100, 'law_processed/law_label2index_big.pkl', self.config.law_label_size)
         self.law_input = torch.from_numpy(self.law_input).cuda()
         self.max_graph = len(graph_list_1)
         self.deg_list = [len(neigh_index[i]) for i in range(self.config.law_label_size)]
