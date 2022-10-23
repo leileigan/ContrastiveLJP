@@ -195,7 +195,7 @@ class LADANDataset(Dataset):
 
     def __getitem__(self, index):
         fact_list = self.data['fact_list'][index]
-        raw_fact_list = self._convert_ids_to_sent(fact_list) 
+        raw_fact_list = self.data['raw_facts_list'][index] 
         accu_label_lists = self.data['accu_label_lists'][index]
         law_label_lists = self.data['law_label_lists'][index]
         term_lists = self.data['term_lists'][index]
@@ -310,7 +310,7 @@ def evaluate(model, valid_dataloader, name, epoch_idx):
     predicts_accu_y, predicts_law_y, predicts_term_y = [], [], []   
 
     for batch_idx, datapoint in enumerate(valid_dataloader):
-        fact_list, _, accu_label_lists, law_label_lists, term_lists , money_lists, drug_lists = datapoint
+        fact_list, raw_fact_lists, accu_label_lists, law_label_lists, term_lists , money_lists, drug_lists = datapoint
         _, _, _, _, _, _, _, _, _, accu_preds, law_preds, term_preds, law_article_preds, graph_preds = model.forward(fact_list, accu_label_lists,law_label_lists, term_lists, config.sent_len, config.doc_len, money_lists, drug_lists)
 
         ground_accu_y.extend(accu_label_lists.tolist())
