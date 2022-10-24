@@ -693,6 +693,7 @@ class MoCo(nn.Module):
 
         #return contra_loss, accu_loss, law_loss, term_loss, accu_preds, law_preds, term_preds
         return contra_doc_loss, contra_accu_loss, contra_law_loss, contra_term_loss, accu_loss, law_loss, term_loss, law_article_loss, graph_choose_loss, accu_preds, law_preds, term_preds, law_article_preds, graph_preds
+        # return q_accu_feature, q_law_feature, q_term_feature
     
     
     def predict(self, legals, legals_len, sent_lent,accu_label_lists, law_label_lists, term_lists):
