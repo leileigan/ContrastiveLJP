@@ -166,8 +166,8 @@ with open('/data/ganleilei/law/ContrastiveLJP/w2id_thulac.pkl', 'rb') as f:
 
 print("word2id dict len:", len(word2id_dict))
 print(word2id_dict['.'])
-# file_list = ['train', 'valid', 'test']
-file_list = ['test']
+file_list = ['train', 'valid', 'test']
+# file_list = ['test']
 cut = get_cutter(stop_words_filtered= False)
 
 for i in range(len(file_list)):
@@ -182,12 +182,14 @@ for i in range(len(file_list)):
 
     num = 0
 
-    with open('/data/ganleilei/law/ContrastiveLJP/{}_cs_with_number_field.json'.format(file_list[i]), 'r', encoding= 'utf-8') as f:
+    with open('/data/ganleilei/law/ContrastiveLJP/big/{}_cs_with_fyb_annotate_number.json'.format(file_list[i]), 'r', encoding= 'utf-8') as f:
         idx = 0
         for line in f.readlines():
             idx += 1
+            print(f"idx: {idx}")
             line = json.loads(line)
             fact = line['fact_cut']
+            line['drug_weight'] = 0
             sentence, word_num, sent_words = sentence2index_matrix(fact, word2id_dict, doc_len, sent_len, cut)
 
             if word_num <= 10:
@@ -212,6 +214,6 @@ for i in range(len(file_list)):
                  'accu_label_lists': accu_label_lists, 'term_lists': term_lists, 'raw_facts_list': raw_facts,
                  'money_amount_lists': money_amount_lists, 'drug_weight_lists': drug_weight_lists}
 
-    pk.dump(data_dict, open('/data/ganleilei/law/ContrastiveLJP/{}_processed_thulac_Legal_basis_with_number_field.pkl'.format(file_list[i]), 'wb'))
+    pk.dump(data_dict, open('/data/ganleilei/law/ContrastiveLJP/big/{}_processed_thulac_Legal_basis_with_fyb_annotate_number_field.pkl'.format(file_list[i]), 'wb'))
     print(num)
     print('{}_dataset is processed over'.format(file_list[i])+'\n')

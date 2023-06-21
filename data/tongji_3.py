@@ -4,7 +4,7 @@ import re
 
 Cutter = thulac.thulac(seg_only = True)
 
-flaw = open("./law.txt",'r')
+flaw = open("law.txt",'r')
 totallaw = 0
 law2num = {}
 num2law = {}
@@ -25,9 +25,10 @@ for line in flaw.readlines():
     totalaccu += 1
 print(totalaccu)
 
-file1 = open("data_train.json",'r',encoding='utf-8')
-file2 = open("data_test.json",'r',encoding='utf-8')
-file3 = open("data_valid.json",'r',encoding='utf-8')
+BASE = "/data/ganleilei/law/ContrastiveLJP/datasets/"
+file1 = open(BASE + "train.json",'r',encoding='utf-8')
+file2 = open(BASE + "test.json",'r',encoding='utf-8')
+file3 = open(BASE + "valid.json",'r',encoding='utf-8')
 
 strpass = '二审'
 totalsample = 0
@@ -89,19 +90,22 @@ for i in range(totalaccu):
 print (clearlaw, clearaccu)
 print(clearlaw2num)
 
+print("accu2num", clearaccu2num)
+print("law2num", clearlaw2num)
 
 file1.close()
 file2.close()
 file3.close()
 
-file1 = open("data_train.json",'r',encoding='utf-8')
-file2 = open("data_test.json",'r',encoding='utf-8')
-file3 = open("data_valid.json",'r',encoding='utf-8')
+
+file1 = open(BASE+"train.json",'r',encoding='utf-8')
+file2 = open(BASE+"test.json",'r',encoding='utf-8')
+file3 = open(BASE+"valid.json",'r',encoding='utf-8')
 
 
-outputfile1 = open("train_cs.json", "w", encoding='utf-8')
-outputfile2 = open("test_cs.json", "w", encoding='utf-8')
-outputfile3 = open("valid_cs.json", "w", encoding='utf-8')
+outputfile1 = open(BASE+"train_cs.json", "w", encoding='utf-8')
+outputfile2 = open(BASE+"test_cs.json", "w", encoding='utf-8')
+outputfile3 = open(BASE+"valid_cs.json", "w", encoding='utf-8')
 
 longest = 0
 

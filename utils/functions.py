@@ -2,14 +2,24 @@
 # @Author: Leilei Gan
 # @Date:   2020-01-12 14:23:06
 
+
 import sys
+sys.path.append('./data.py')
 import numpy as np
 from utils.alphabet import Alphabet
 from gensim.models import KeyedVectors
 import codecs, os
 import torch
+from utils.config import *
+import json
+import jieba
+from scipy import stats
+import tensorflow as tf
+from torch.nn.utils.rnn import pack_sequence, pad_sequence
+from sklearn.metrics import accuracy_score, f1_score, recall_score, precision_score, classification_report
 
 NULLKEY = "-null-"
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 def normalize_word(word):
     new_word = ""
@@ -19,39 +29,6 @@ def normalize_word(word):
         else:
             new_word += char
     return new_word
-
-def read_instance(input_dir, word_alphabet, label_alphabet, number_normalized, max_sent_length):
-
-    total_file_count = len(os.listdir(input_dir))
-    instances = []
-    for file_name in os.listdir(input_dir):
-        in_lines = open(input_dir + '/' + file_name, 'r').readlines()
-
-        for idx in range(len(in_lines)):
-            line = in_lines[idx]
-            if "chaming" in line:
-                cm_text = in_lines[idx + 1].strip()
-
-            elif "suqiu-split" in line:
-                suqiu_text = in_lines[idx + 1].strip()
-
-            elif "suqiu-labels" in line:
-                suqiu_label = in_lines[idx + 1].strip()
-                suqiu_label_list = suqiu_label[2:-2].split("', '")
-                suqiu_list = suqiu_text[2:-2].split("', '")
-                if len(suqiu_list) != len(suqiu_label_list):
-                    print("wrong formate: ", file_name)
-                    break
-
-                for suqiu_idx in range(len(suqiu_list)):
-                    words = list(cm_text) + list(suqiu_list[suqiu_idx])
-                    label = suqiu_label_list[suqiu_idx]
-                    word_Ids = [word_alphabet.get_index(word) for word in words]
-                    label_Ids = label_alphabet.get_index(label)
-                    instances.append((words, label, word_Ids, label_Ids))
-
-    print("finish loading %d files with %d instances" % (total_file_count, len(instances)))
-    return instances
 
 
 def build_pretrain_embedding(embedding_path, word_alphabet, embedd_dim=100, norm=True):    
@@ -92,7 +69,7 @@ def norm2one(vec):
 def load_pretrain_emb(embedding_path):
     embedd_dim = -1
     embedd_dict = dict()
-    with open(embedding_path, 'r') as file:
+    with codecs.open(embedding_path, 'r', encoding='utf-8', errors='ignore') as file:
         for line in file:
             line = line.strip()
             if len(line) == 0:
@@ -101,11 +78,14 @@ def load_pretrain_emb(embedding_path):
             if embedd_dim < 0:
                 embedd_dim = len(tokens) - 1
             else:
-                assert (embedd_dim + 1 == len(tokens))
+                if (embedd_dim + 1 != len(tokens)):
+                    print('error line:', line)
+                    continue
+
             embedd = np.empty([1, embedd_dim])
             embedd[:] = tokens[1:]
             embedd_dict[tokens[0]] = embedd
     return embedd_dict, embedd_dim
 
 if __name__=="__main__":
-    read_instance('./../data/cases_dev', None, None, False, 512)
+    pass

@@ -139,3 +139,5 @@ data-bin/
 .vscode/ftp-sync.json
 .vscode/settings.json
 .vscode/*
+
+script/
