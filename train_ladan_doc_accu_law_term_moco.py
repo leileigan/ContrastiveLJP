@@ -291,8 +291,7 @@ def evaluate(model, valid_dataloader, name, epoch_idx):
 
     for batch_idx, datapoint in enumerate(valid_dataloader):
         fact_list, raw_fact_lists, accu_label_lists, law_label_lists, term_lists = datapoint
-        _, _, _, _, _, _, _, _, _, accu_preds, law_preds, term_preds, law_article_preds, graph_preds = model.forward(
-            fact_list, accu_label_lists, law_label_lists, term_lists, config.sent_len, config.doc_len)
+        accu_preds, law_preds, term_preds = model.predict(fact_list, accu_label_lists, law_label_lists, term_lists, config.sent_len, config.doc_len)
 
         ground_accu_y.extend(accu_label_lists.tolist())
         ground_law_y.extend(law_label_lists.tolist())
