@@ -344,7 +344,7 @@ class MoCo(nn.Module):
             self._momentum_update_key_encoder()  # update the key encoder
             # shuffle for making use of BN
             #im_k, idx_unshuffle = self._batch_shuffle_ddp(im_k)
-            _, _, _, _, _, _, k_doc_feature, k_accu_feature, k_law_feature, k_term_feature = self.encoder_q(legals, accu_label_lists, law_label_lists, term_lists, sent_lent, legals_len, money_amount_lists, drug_lists)
+            _, _, _, _, _, _, k_doc_feature, k_accu_feature, k_law_feature, k_term_feature = self.encoder_k(legals, accu_label_lists, law_label_lists, term_lists, sent_lent, legals_len, money_amount_lists, drug_lists)
             
             k_doc_feature = nn.functional.normalize(k_doc_feature, dim=1)
             k_accu_feature = nn.functional.normalize(k_accu_feature, dim=1)
