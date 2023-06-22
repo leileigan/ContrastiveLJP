@@ -737,9 +737,9 @@ class MoCo(nn.Module):
         return inbatch_doc_loss, contra_doc_loss, contra_accu_loss, contra_law_loss, contra_term_loss, accu_loss, law_loss, term_loss, law_article_loss, graph_choose_loss, accu_preds, law_preds, term_preds, law_article_preds, graph_preds
     
     
-    def predict(self, legals, legals_len, sent_lent,accu_label_lists, law_label_lists, term_lists, money_amount_lists, drug_lists):
+    def predict(self, legals, accu_label_lists, law_label_lists, term_lists, sent_len, legals_len, money_amount_lists, drug_lists):
         # compute query features
-        accu_loss, law_loss, term_loss, law_article_loss, graph_choose_loss, accu_preds, law_preds, term_preds, law_article_preds, graph_preds, q_doc_feature, q_accu_feature, q_law_feature, q_term_feature = self.encoder_q(legals, accu_label_lists, law_label_lists, term_lists, sent_lent, legals_len, money_amount_lists, drug_lists)
+        _, _, _, _, _, accu_preds, law_preds, term_preds, _, _, _, _, _, _ = self.encoder_q(legals, accu_label_lists, law_label_lists, term_lists, sent_len, legals_len, money_amount_lists, drug_lists)
         
         #q = nn.functional.normalize(q, dim=1)
         #contra_loss, label_1_index = self._get_contra_loss(q, accu_label_lists)
