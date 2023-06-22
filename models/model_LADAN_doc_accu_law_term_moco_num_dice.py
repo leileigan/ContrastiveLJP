@@ -612,7 +612,9 @@ class MoCo(nn.Module):
             self.law_label_queue[ptr:ptr+batch_size, :] = law_label_keys
             self.term_label_queue[ptr:ptr+batch_size, :] = term_label_keys
 
+        # print(f"ptr: {ptr}, queue size: {self.K}, batch size: {batch_size}")
         ptr = (ptr + batch_size) % self.K  # move pointer
+        # print(f"ptr: {ptr}, queue size: {self.K}, batch size: {batch_size}")
         self.ptr[0] = ptr
 
     def _get_contra_loss(self, doc_query, accu_query, law_query, term_query, accu_label_lists, law_label_lists, term_label_lists):
@@ -718,9 +720,9 @@ class MoCo(nn.Module):
         return contra_doc_loss, contra_accu_loss, contra_law_loss, contra_term_loss, accu_loss, law_loss, term_loss, law_article_loss, graph_choose_loss, accu_preds, law_preds, term_preds, law_article_preds, graph_preds
     
     
-    def predict(self, legals, legals_len, sent_lent,accu_label_lists, law_label_lists, term_lists, money_amount_lists, drug_lists):
+    def predict(self, legals, accu_label_lists, law_label_lists, term_lists, sent_lent, legals_len, money_amount_lists, drug_weight_lists):
         # compute query features
-        _, _, _, _, _, accu_preds, law_preds, term_preds, _, _, _, _, _, _ = self.encoder_q(legals, accu_label_lists, law_label_lists, term_lists, sent_lent, legals_len)
+        _, _, _, _, _, accu_preds, law_preds, term_preds, _, _, _, _, _, _ = self.encoder_q(legals, accu_label_lists, law_label_lists, term_lists, sent_lent, legals_len, money_amount_lists, drug_weight_lists)
         #q = nn.functional.normalize(q, dim=1)
         #contra_loss, label_1_index = self._get_contra_loss(q, accu_label_lists)
         # if label_1_index != -1:

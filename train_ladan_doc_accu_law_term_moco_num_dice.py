@@ -419,7 +419,7 @@ def train(model, dataset, config: Config):
         for batch_idx, datapoint in enumerate(train_dataloader):
             fact_list, _, accu_label_lists, law_label_lists, term_lists, money_amount_lists, drug_lists = datapoint
             contra_doc_loss, contra_accu_loss, contra_law_loss, contra_term_loss, accu_loss, law_loss, term_loss, law_article_loss, graph_choose_loss, accu_preds, law_preds, term_preds, law_article_preds, graph_preds = model.forward(fact_list, accu_label_lists, law_label_lists, term_lists, config.sent_len, config.doc_len,
-            money_amount_lists, drug_lists)
+                                                                                                                                                                                                                                         money_amount_lists, drug_lists)
 
             loss = accu_loss + term_loss + law_loss + graph_choose_loss + config.alpha1 * contra_accu_loss + config.alpha2 * contra_law_loss + config.alpha3 * contra_term_loss + config.alpha4 * contra_doc_loss
             
