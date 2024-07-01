@@ -5,7 +5,7 @@ Leilei Gan, Baokui Li, Kun Kuang, Yating Zhang, Lei Wang, Luu Anh Tuan, Yi Yang,
 If you find this repository helpful, please cite the following:
 ```latex
 @article{gan2022exploiting,
-  title={Exploiting Contrastive Learning and Numerical Evidence for Improving Confusing Legal Judgment Prediction},
+  title={Exploiting Contrastive Learning and Numerical Evidence for Confusing Legal Judgment Prediction},
   author={Gan, Leilei and Li, Baokui and Kuang, Kun and Yang, Yi and Wu, Fei},
   journal={arXiv e-prints},
   pages={arXiv--2211},
