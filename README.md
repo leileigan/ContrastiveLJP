@@ -4,12 +4,12 @@ This repository contains the data and code for the paper [Exploiting Contrastive
 Leilei Gan, Baokui Li, Kun Kuang, Yating Zhang, Lei Wang, Luu Anh Tuan, Yi Yang, Fei Wu
 If you find this repository helpful, please cite the following:
 ```latex
-@article{gan2022exploiting,
+@inproceedings{gan2023exploiting,
   title={Exploiting Contrastive Learning and Numerical Evidence for Confusing Legal Judgment Prediction},
-  author={Gan, Leilei and Li, Baokui and Kuang, Kun and Yang, Yi and Wu, Fei},
-  journal={arXiv e-prints},
-  pages={arXiv--2211},
-  year={2022}
+  author={Gan, Leilei and Li, Baokui and Kuang, Kun and Zhang, Yating and Wang, Lei and Luu, Anh and Yang, Yi and Wu, Fei},
+  booktitle={Findings of the Association for Computational Linguistics: EMNLP 2023},
+  pages={12174--12185},
+  year={2023}
 }
 ```
 ### Requirements
@@ -27,7 +27,7 @@ And the following is the process of obtaining evidence with criminal amounts thr
 
 3. Third, select the corresponding code in "data/data_pickle.py" and "data/make_Legal_basis_data.py" to generate the data structure according to the model you want to run.(**We put all the processed .pkl files in the link at the end of the article. If you do not want to process the data, you can download it directly from the link.**） 
 4. Last, train the digital encoding model through DICE loss.
-```
+```latex
 \begin{align}
     \mathbf{x}_i &= \text{NumEncoder}(x_i) \\
     \mathbf{y}_i &= \text{NumEncoder}(y_i) \\
