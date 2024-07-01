@@ -45,7 +45,7 @@ python train_dice.py
 Due to the NeurJudge model's different processing of input data, additional processing is required. And we offer both datasets in the link.
 ### Related link
 
-1. [CAIL2018.zip](https://drive.google.com/file/d/1-OTqvewUJMT9dZ1fAbbRGhsolx6anQMl/view?usp=drive_link)(**exercise**for original small dataset; **first** + **restData** for original big dataset)
+1. [CAIL2018.zip](https://drive.google.com/file/d/1-OTqvewUJMT9dZ1fAbbRGhsolx6anQMl/view?usp=drive_link)(**exercise** for original small dataset; **first** + **restData** for original big dataset)
 2. [cail_thulac.npy](https://drive.google.com/file/d/1_j1yYuG1VSblMuMCZrqrL0AtxadFUaXC/view?usp=drivesdk+ ) 
 3. [w2id_thulac.pkl](https://drive.google.com/file/d/1jnNgilApBRnA2ihldOr1Ceaci_7aFtsD/view?usp=drive_link)
 4. [Datasets](https://drive.google.com/file/d/1Ygm9QFsEEhwNPNaL786LmFGfCJoqvlQA/view?usp=drive_link) (We only upload the processed small dataset because the processed big dataset is too large. You can obtain the processed big dataset by following the data processing steps above) 
