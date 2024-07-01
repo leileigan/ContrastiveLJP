@@ -27,12 +27,14 @@ And the following is the process of obtaining evidence with criminal amounts thr
 
 3. Third, select the corresponding code in "data/data_pickle.py" and "data/make_Legal_basis_data.py" to generate the data structure according to the model you want to run.(**We put all the processed .pkl files in the link at the end of the article. If you do not want to process the data, you can download it directly from the link.**） 
 4. Last, train the digital encoding model through DICE loss.
-
-$\begin{align}
+```
+\begin{align}
     \mathbf{x}_i &= \text{NumEncoder}(x_i) \\
     \mathbf{y}_i &= \text{NumEncoder}(y_i) \\
     \ell_{num} &= \bigg\lVert \dfrac{2|x_i - y_i|}{|x_i| +|y_i|} -\text{cos}(\mathbf{x}_i, \mathbf{y}_i) \bigg\rVert
-\end{align}$
+\end{align}
+```
+
 ```shell
 python train_dice.py
 ```
@@ -43,7 +45,7 @@ python train_dice.py
 Due to the NeurJudge model's different processing of input data, additional processing is required. And we offer both datasets in the link.
 ### Related link
 
-1. [CAIL2018.zip](https://drive.google.com/file/d/1-OTqvewUJMT9dZ1fAbbRGhsolx6anQMl/view?usp=drive_link)(**exercise **for original small dataset; **first** + **restData** for original big dataset)
+1. [CAIL2018.zip](https://drive.google.com/file/d/1-OTqvewUJMT9dZ1fAbbRGhsolx6anQMl/view?usp=drive_link)(**exercise**for original small dataset; **first** + **restData** for original big dataset)
 2. [cail_thulac.npy](https://drive.google.com/file/d/1_j1yYuG1VSblMuMCZrqrL0AtxadFUaXC/view?usp=drivesdk+ ) 
 3. [w2id_thulac.pkl](https://drive.google.com/file/d/1jnNgilApBRnA2ihldOr1Ceaci_7aFtsD/view?usp=drive_link)
 4. [Datasets](https://drive.google.com/file/d/1Ygm9QFsEEhwNPNaL786LmFGfCJoqvlQA/view?usp=drive_link) (We only upload the processed small dataset because the processed big dataset is too large. You can obtain the processed big dataset by following the data processing steps above) 
