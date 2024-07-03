@@ -26,7 +26,7 @@ And the following is the process of obtaining evidence with criminal amounts thr
 > train_cs.json -> train_cs_with_number_process.json
 
 3. Third, select the corresponding code in "data/data_pickle.py" and "data/make_Legal_basis_data.py" to generate the data structure according to the model you want to run.(**We put all the processed .pkl files in the link at the end of the article. If you do not want to process the data, you can download it directly from the link.**） 
-4. Last, train the digital encoding model through DICE loss.
+4. Lastly, train the digital encoding model through DICE loss.
 ```latex
 \begin{align}
     \mathbf{x}_i &= \text{NumEncoder}(x_i) \\
@@ -42,7 +42,7 @@ python train_dice.py
 ---
 
 ### Notice
-Due to the NeurJudge model's different processing of input data, additional processing is required. And we offer both datasets in the link.
+Due to the NeurJudge model's different processing of input data, additional processing is required. We offer both datasets in the link.
 ### Related link
 
 1. [CAIL2018.zip](https://drive.google.com/file/d/1-OTqvewUJMT9dZ1fAbbRGhsolx6anQMl/view?usp=drive_link)(**exercise** for original small dataset; **first** + **restData** for original big dataset)
