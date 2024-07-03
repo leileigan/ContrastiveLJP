@@ -1,5 +1,5 @@
 ## Exploiting Contrastive Learning and Numerical Evidence for Confusing Legal Judgment Prediction
-### Introduce
+### Introduction
 This repository contains the data and code for the paper [Exploiting Contrastive Learning and Numerical Evidence for Confusing Legal Judgment Prediction.](https://arxiv.org/abs/2211.08238) 
 Leilei Gan, Baokui Li, Kun Kuang, Yating Zhang, Lei Wang, Luu Anh Tuan, Yi Yang, Fei Wu
 If you find this repository helpful, please cite the following:
